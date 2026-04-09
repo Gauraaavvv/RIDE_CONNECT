@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Driver = require('../models/Driver');
-const { protect } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 
 // Register a new driver
 router.post('/register', async (req, res) => {
@@ -191,7 +191,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update driver availability (protected route)
-router.patch('/:id/availability', protect, async (req, res) => {
+router.patch('/:id/availability', auth, async (req, res) => {
   try {
     const { isAvailable } = req.body;
     
@@ -237,7 +237,7 @@ router.patch('/:id/availability', protect, async (req, res) => {
 });
 
 // Delete driver (protected route)
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const driver = await Driver.findById(req.params.id);
     

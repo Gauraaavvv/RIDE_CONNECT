@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Car = require('../models/Car');
-const { protect } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 
 // Add a new car for rent
 router.post('/add', async (req, res) => {
@@ -219,7 +219,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update car availability (protected route)
-router.patch('/:id/availability', protect, async (req, res) => {
+router.patch('/:id/availability', auth, async (req, res) => {
   try {
     const { isAvailable } = req.body;
     
@@ -265,7 +265,7 @@ router.patch('/:id/availability', protect, async (req, res) => {
 });
 
 // Update car details (protected route)
-router.patch('/:id', protect, async (req, res) => {
+router.patch('/:id', auth, async (req, res) => {
   try {
     const allowedUpdates = ['pricePerDay', 'availability', 'features', 'isAvailable'];
     const updates = {};
@@ -315,7 +315,7 @@ router.patch('/:id', protect, async (req, res) => {
 });
 
 // Delete car (protected route)
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const car = await Car.findById(req.params.id);
     

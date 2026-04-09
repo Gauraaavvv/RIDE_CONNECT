@@ -4,33 +4,28 @@ import { motion } from 'framer-motion';
 import { 
   User, MapPin, Star, Clock, Filter, Search, 
   Shield, Phone, MessageCircle, Heart, Car, Award,
-  Languages, GraduationCap, Briefcase
+  Languages, GraduationCap, Briefcase, DollarSign
 } from 'lucide-react';
 import { addNotification } from '../store/slices/notificationSlice';
-import { rideAPI, bookingAPI } from '../services/api';
+import { rideAPI, bookingAPI, driverAPI } from '../services/api';
 import { RootState } from '../store/store';
 import PageShell from '../components/layout/PageShell';
 
 interface Driver {
-  id: string;
+  _id: string;
   name: string;
-  age: number;
+  phone: string;
   experience: number;
-  rating: number;
-  reviews: number;
-  hourlyRate: number;
-  dailyRate: number;
+  licenseNumber: string;
   location: string;
-  available: boolean;
-  languages: string[];
-  licenses: string[];
-  specializations: string[];
-  image: string;
+  pricePerHour: number;
+  availability: string;
+  rating: number;
+  totalTrips: number;
+  isAvailable: boolean;
   verified: boolean;
-  completedTrips: number;
-  responseTime: string;
-  bio: string;
-  vehicleTypes: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 const DriverServices: React.FC = () => {
@@ -50,15 +45,15 @@ const DriverServices: React.FC = () => {
       dispatch(
         addNotification({
           type: 'info',
-          title: 'Login required',
-          message: 'Sign in to hire a driver.',
+          title: 'Login Required',
+          message: 'Please login to hire a driver',
           duration: 4000,
         })
       );
       return;
     }
     try {
-      await bookingAPI.create({ rideId: driver.id, hours: 4 });
+      await bookingAPI.create({ rideId: driver._id, hours: 4 });
       dispatch(
         addNotification({
           type: 'success',
@@ -113,42 +108,12 @@ const DriverServices: React.FC = () => {
     (async () => {
       setListLoading(true);
       try {
-        const rides = await rideAPI.getRides({
-          serviceType: 'hire_driver',
-          availableOnly: 'true',
-        });
-        const list = Array.isArray(rides) ? rides : [];
-        const mapped: Driver[] = list.map((r: Record<string, unknown>) => {
-          const pricing = r.pricing as { perHour?: number; perDay?: number } | undefined;
-          const hourly = Number(pricing?.perHour || r.pricePerSeat || 0);
-          const daily = Number(pricing?.perDay || hourly * 8 || 0);
-          const desc = String(r.description || '');
-          return {
-            id: String(r.id),
-            name: String(r.driverName || 'Driver'),
-            age: 30,
-            experience: 5,
-            rating: Number(r.rating ?? 0),
-            reviews: 0,
-            hourlyRate: hourly,
-            dailyRate: daily,
-            location: String(r.source || ''),
-            available: r.status === 'active',
-            languages: ['English', 'Hindi', 'Assamese'],
-            licenses: ['LMV'],
-            specializations: desc.length > 0 ? [desc.slice(0, 40)] : ['Hire driver'],
-            image: '/api/placeholder/200/200',
-            verified: Boolean(r.isVerified),
-            completedTrips: 0,
-            responseTime: '—',
-            bio: desc || 'Professional driver listing on RideConnect.',
-            vehicleTypes: [String(r.vehicleType || 'car')],
-          };
-        });
+        const driversData = await driverAPI.list();
         if (!cancelled) {
-          setDrivers(mapped);
+          setDrivers(driversData || []);
         }
-      } catch {
+      } catch (error) {
+        console.error('Failed to fetch drivers:', error);
         if (!cancelled) {
           setDrivers([]);
         }
@@ -174,14 +139,9 @@ const DriverServices: React.FC = () => {
       (selectedExperience === '0-2' && driver.experience <= 2) ||
       (selectedExperience === '3-5' && driver.experience >= 3 && driver.experience <= 5) ||
       (selectedExperience === '5+' && driver.experience > 5);
-    const matchesPrice = driver.hourlyRate >= priceRange[0] && driver.hourlyRate <= priceRange[1];
-    const matchesLanguages = selectedLanguages.length === 0 || 
-                           selectedLanguages.some(lang => driver.languages.includes(lang));
-    const matchesVehicleTypes = selectedVehicleTypes.length === 0 || 
-                               selectedVehicleTypes.some(type => driver.vehicleTypes.includes(type));
+    const matchesPrice = driver.pricePerHour >= priceRange[0] && driver.pricePerHour <= priceRange[1];
     
-    return matchesSearch && matchesLocation && matchesExperience && matchesPrice && 
-           matchesLanguages && matchesVehicleTypes;
+    return matchesSearch && matchesLocation && matchesExperience && matchesPrice;
   });
   const activeFiltersCount =
     (searchQuery ? 1 : 0) +
@@ -394,7 +354,7 @@ const DriverServices: React.FC = () => {
             <div className="space-y-6">
               {filteredDrivers.map((driver, index) => (
                 <motion.div
-                  key={driver.id}
+                  key={driver._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
@@ -408,12 +368,12 @@ const DriverServices: React.FC = () => {
                         <div className="w-24 h-24 bg-gradient-to-br from-slate-200 to-slate-300 rounded-full flex items-center justify-center">
                           <User className="w-12 h-12 text-slate-400" />
                         </div>
-                        {!driver.available && (
+                        {!driver.isAvailable && (
                           <div className="absolute -top-2 -right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-medium">
                             Busy
                           </div>
                         )}
-                        {driver.available && (
+                        {driver.isAvailable && (
                           <div className="absolute -top-2 -right-2 rounded-full bg-emerald-500 px-2 py-1 text-xs font-medium text-white">
                             <div className="inline-flex items-center gap-1.5">
                               <motion.span
@@ -440,7 +400,7 @@ const DriverServices: React.FC = () => {
                               {driver.name}
                             </h3>
                             <p className="text-sm text-slate-600 mb-2">
-                              {driver.age} years • {driver.experience} years experience
+                              {driver.experience} years experience
                             </p>
                             <div className="flex items-center space-x-4 text-sm text-slate-600">
                               <div className="flex items-center">
@@ -448,20 +408,14 @@ const DriverServices: React.FC = () => {
                                 {driver.location}
                               </div>
                               <div className="flex items-center">
-                                <Clock className="w-4 h-4 mr-1" />
-                                {driver.responseTime}
-                              </div>
-                              <div className="flex items-center">
                                 <Car className="w-4 h-4 mr-1" />
-                                {driver.completedTrips} trips
+                                {driver.totalTrips} trips
                               </div>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-indigo-600">₹{driver.hourlyRate}</div>
+                            <div className="text-2xl font-bold text-indigo-600">₹{driver.pricePerHour}</div>
                             <div className="text-sm text-slate-500">per hour</div>
-                            <div className="text-lg font-semibold text-slate-600">₹{driver.dailyRate}</div>
-                            <div className="text-sm text-slate-500">per day</div>
                           </div>
                         </div>
 
@@ -478,55 +432,18 @@ const DriverServices: React.FC = () => {
                             ))}
                           </div>
                           <span className="ml-2 text-sm text-slate-600">
-                            {driver.rating} ({driver.reviews} reviews)
+                            {driver.rating} rating
                           </span>
-                        </div>
-
-                        {/* Bio */}
-                        <p className="text-slate-600 mb-4 line-clamp-2">{driver.bio}</p>
-
-                        {/* Specializations */}
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {driver.specializations.map(spec => (
-                            <span
-                              key={spec}
-                              className="px-3 py-1 bg-indigo-50 text-indigo-600 text-sm rounded-full"
-                            >
-                              {spec}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Details Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                          <div className="flex items-center text-sm text-slate-600">
-                            <Languages className="w-4 h-4 mr-2" />
-                            {driver.languages.slice(0, 2).join(', ')}
-                            {driver.languages.length > 2 && '...'}
-                          </div>
-                          <div className="flex items-center text-sm text-slate-600">
-                            <GraduationCap className="w-4 h-4 mr-2" />
-                            {driver.licenses.length} licenses
-                          </div>
-                          <div className="flex items-center text-sm text-slate-600">
-                            <Briefcase className="w-4 h-4 mr-2" />
-                            {driver.vehicleTypes.slice(0, 2).join(', ')}
-                            {driver.vehicleTypes.length > 2 && '...'}
-                          </div>
-                          <div className="flex items-center text-sm text-slate-600">
-                            <Award className="w-4 h-4 mr-2" />
-                            {driver.completedTrips} trips
-                          </div>
                         </div>
 
                         {/* Action Buttons */}
                         <div className="flex space-x-3">
                           <motion.button
                             onClick={() => handleHireDriver(driver)}
-                            disabled={!driver.available}
+                            disabled={!driver.isAvailable}
                             className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                            whileHover={driver.available ? { scale: 1.03 } : {}}
-                            whileTap={driver.available ? { scale: 0.97 } : {}}
+                            whileHover={driver.isAvailable ? { scale: 1.03 } : {}}
+                            whileTap={driver.isAvailable ? { scale: 0.97 } : {}}
                           >
                             Hire Driver
                           </motion.button>
@@ -566,11 +483,25 @@ const DriverServices: React.FC = () => {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-center py-12"
+                className="text-center py-20"
               >
-                <User className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-800 mb-2">No drivers found</h3>
-                <p className="text-slate-600">Try adjusting your filters, or post a hire_driver listing via the API.</p>
+                <div className="w-24 h-24 bg-gradient-to-br from-slate-200 to-slate-300 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Car className="w-12 h-12 text-slate-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                  No drivers available yet
+                </h3>
+                <p className="text-slate-600 mb-6">
+                  Be the first to register as a driver and start earning!
+                </p>
+                <motion.button
+                  onClick={() => window.location.href = '/become-driver'}
+                  className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Become a Driver
+                </motion.button>
               </motion.div>
             )}
             </>

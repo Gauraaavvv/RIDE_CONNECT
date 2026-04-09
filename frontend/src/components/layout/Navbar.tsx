@@ -10,14 +10,29 @@ interface NavItem {
   path: string;
   label: string;
   requiresAuth?: boolean;
+  dropdown?: { label: string; path: string }[];
 }
 
 const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Home' },
   { path: '/rides', label: 'Find Ride' },
   { path: '/create-ride', label: 'Offer Ride' },
-  { path: '/car-rental', label: 'Rent Car' },
-  { path: '/driver-services', label: 'Hire Driver' },
+  { 
+    path: '/car-rental', 
+    label: 'Rent Car',
+    dropdown: [
+      { label: 'Find Cars', path: '/car-rental' },
+      { label: 'List Your Car', path: '/list-car' }
+    ]
+  },
+  { 
+    path: '/driver-services', 
+    label: 'Hire Driver',
+    dropdown: [
+      { label: 'Find Drivers', path: '/driver-services' },
+      { label: 'Become Driver', path: '/become-driver' }
+    ]
+  },
   { path: '/profile', label: 'Profile', requiresAuth: true }
 ];
 
@@ -29,6 +44,7 @@ const Navbar: React.FC = () => {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const isHome = location.pathname === '/';
 
@@ -81,6 +97,72 @@ const Navbar: React.FC = () => {
         <div className="hidden items-center gap-2 md:flex">
           {visibleItems.map((item) => {
             const active = location.pathname === item.path;
+            const hasDropdown = item.dropdown && item.dropdown.length > 0;
+            const isDropdownOpen = openDropdown === item.path;
+
+            if (hasDropdown) {
+              return (
+                <div key={item.path} className="relative">
+                  <button
+                    onClick={() => setOpenDropdown(isDropdownOpen ? null : item.path)}
+                    className={`relative rounded-xl px-4 py-2 text-sm font-medium transition flex items-center gap-1 ${
+                      active || isDropdownOpen
+                        ? 'bg-white/15 text-white'
+                        : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                    <motion.div
+                      animate={{ rotate: isDropdownOpen ? 180 : 0 }}
+                      className="w-3 h-3"
+                    >
+                      <svg viewBox="0 0 12 12" className="w-full h-full">
+                        <path
+                          d="M2 4l4 4 4-4"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                          fill="none"
+                        />
+                      </svg>
+                    </motion.div>
+                    {(active || isDropdownOpen) && (
+                      <motion.span
+                        layoutId="nav-pill"
+                        className="absolute inset-0 -z-10 rounded-xl border border-cyan-100/35"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      />
+                    )}
+                  </button>
+                  
+                  <AnimatePresence>
+                    {isDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute top-full left-0 mt-2 w-48 rounded-xl border border-white/10 bg-[#04070d]/95 backdrop-blur-xl shadow-lg overflow-hidden"
+                      >
+                        {item.dropdown?.map((dropdownItem) => (
+                          <Link
+                            key={dropdownItem.path}
+                            to={dropdownItem.path}
+                            onClick={() => setOpenDropdown(null)}
+                            className={`block px-4 py-3 text-sm transition ${
+                              location.pathname === dropdownItem.path
+                                ? 'bg-white/15 text-white'
+                                : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            {dropdownItem.label}
+                          </Link>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            }
 
             return (
               <Link

@@ -7,31 +7,29 @@ import {
   Phone, MessageCircle, Heart
 } from 'lucide-react';
 import { addNotification } from '../store/slices/notificationSlice';
-import { rideAPI, bookingAPI } from '../services/api';
+import { rideAPI, bookingAPI, carAPI } from '../services/api';
 import { RootState } from '../store/store';
 import PageShell from '../components/layout/PageShell';
 
 interface CarListing {
-  id: string;
-  name: string;
-  model: string;
-  year: number;
-  price: number;
-  image: string;
+  _id: string;
+  ownerName: string;
+  carModel: string;
+  carNumber: string;
+  seats: number;
+  pricePerDay: number;
   location: string;
-  available: boolean;
+  availability: string;
+  carType: string;
+  fuelType: string;
+  year: number;
   features: string[];
   rating: number;
-  reviews: number;
-  fuelType: string;
-  transmission: string;
-  seats: number;
-  mileage: string;
-  owner: {
-    name: string;
-    rating: number;
-    verified: boolean;
-  };
+  totalRentals: number;
+  isAvailable: boolean;
+  verified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const CarRental: React.FC = () => {
@@ -50,20 +48,20 @@ const CarRental: React.FC = () => {
       dispatch(
         addNotification({
           type: 'info',
-          title: 'Login required',
-          message: 'Sign in to request a rental.',
+          title: 'Login Required',
+          message: 'Please login to rent a car',
           duration: 4000,
         })
       );
       return;
     }
     try {
-      await bookingAPI.create({ rideId: car.id, days: 1 });
+      await bookingAPI.create({ rideId: car._id, days: 1 });
       dispatch(
         addNotification({
           type: 'success',
-          title: 'Rental requested',
-          message: `Your booking request for ${car.name} has been sent to ${car.owner.name}.`,
+          title: 'Request sent',
+          message: `Your rental request for ${car.carModel} has been submitted.`,
           duration: 5000,
         })
       );
@@ -85,7 +83,7 @@ const CarRental: React.FC = () => {
     dispatch(addNotification({
       type: 'info',
       title: 'Message Sent!',
-      message: `Message sent to ${car.owner.name} about ${car.name}. They will reply soon!`,
+      message: `Message sent to ${car.ownerName} about ${car.carModel}. They will reply soon!`,
       duration: 5000
     }));
   };
@@ -94,7 +92,7 @@ const CarRental: React.FC = () => {
     dispatch(addNotification({
       type: 'info',
       title: 'Call Initiated!',
-      message: `Calling ${car.owner.name} about ${car.name}. Please wait...`,
+      message: `Calling ${car.ownerName} about ${car.carModel}. Please wait...`,
       duration: 3000
     }));
   };
@@ -104,42 +102,12 @@ const CarRental: React.FC = () => {
     (async () => {
       setListLoading(true);
       try {
-        const rides = await rideAPI.getRides({
-          serviceType: 'rent_car',
-          availableOnly: 'true',
-        });
-        const list = Array.isArray(rides) ? rides : [];
-        const mapped: CarListing[] = list.map((r: Record<string, unknown>) => {
-          const desc = String(r.description || '');
-          const title = desc.length > 0 ? desc.slice(0, 56) : `${String(r.vehicleType || 'Vehicle')} rental`;
-          const pricing = r.pricing as { perDay?: number } | undefined;
-          return {
-            id: String(r.id),
-            name: title,
-            model: String(r.vehicleNumber || ''),
-            year: new Date().getFullYear(),
-            price: Number(pricing?.perDay || r.pricePerSeat || 0),
-            image: '/api/placeholder/400/300',
-            location: String(r.source || ''),
-            available: r.status === 'active',
-            features: desc.length > 20 ? [desc.slice(0, 40)] : ['Listed on RideConnect'],
-            rating: Number(r.rating ?? 0),
-            reviews: 0,
-            fuelType: '—',
-            transmission: '—',
-            seats: Number(r.availableSeats || 4),
-            mileage: '—',
-            owner: {
-              name: String(r.driverName || 'Owner'),
-              rating: Number(r.rating ?? 0),
-              verified: Boolean(r.isVerified),
-            },
-          };
-        });
+        const carsData = await carAPI.list();
         if (!cancelled) {
-          setCarListings(mapped);
+          setCarListings(carsData || []);
         }
-      } catch {
+      } catch (error) {
+        console.error('Failed to fetch cars:', error);
         if (!cancelled) {
           setCarListings([]);
         }
@@ -162,10 +130,10 @@ const CarRental: React.FC = () => {
   const locations = ['Guwahati', 'Dibrugarh', 'Jorhat', 'Silchar', 'Tinsukia'];
 
   const filteredCars = carListings.filter(car => {
-    const matchesSearch = car.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         car.model.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = car.carModel.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         car.carNumber.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesLocation = !selectedLocation || car.location === selectedLocation;
-    const matchesPrice = car.price >= priceRange[0] && car.price <= priceRange[1];
+    const matchesPrice = car.pricePerDay >= priceRange[0] && car.pricePerDay <= priceRange[1];
     const matchesFeatures = selectedFeatures.length === 0 || 
                            selectedFeatures.every(feature => car.features.includes(feature));
     
@@ -352,7 +320,7 @@ const CarRental: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {filteredCars.map((car, index) => (
                 <motion.div
-                  key={car.id}
+                  key={car._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
@@ -371,17 +339,17 @@ const CarRental: React.FC = () => {
                       </motion.div>
                     </div>
                     <div className={`absolute top-4 right-4 rounded-full px-2 py-1 text-xs font-medium text-white ${
-                      car.available ? 'bg-emerald-500' : 'bg-red-500'
+                      car.isAvailable ? 'bg-emerald-500' : 'bg-red-500'
                     }`}>
                       <div className="inline-flex items-center gap-1.5">
-                        {car.available && (
+                        {car.isAvailable && (
                           <motion.span
                             className="h-1.5 w-1.5 rounded-full bg-white"
                             animate={{ opacity: [0.4, 1, 0.4] }}
                             transition={{ duration: 1.3, repeat: Infinity }}
                           />
                         )}
-                        {car.available ? 'Available' : 'Not Available'}
+                        {car.isAvailable ? 'Available' : 'Not Available'}
                       </div>
                     </div>
                     <motion.button
@@ -397,12 +365,12 @@ const CarRental: React.FC = () => {
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h3 className="text-lg font-semibold text-slate-800 mb-1">
-                          {car.name}
+                          {car.carModel}
                         </h3>
-                        <p className="text-sm text-slate-600">{car.model} • {car.year}</p>
+                        <p className="text-sm text-slate-600">{car.year} • {car.seats} seats</p>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-bold text-indigo-600">₹{car.price}</div>
+                        <div className="text-xl font-bold text-indigo-600">₹{car.pricePerDay}</div>
                         <div className="text-sm text-slate-500">per day</div>
                       </div>
                     </div>
@@ -420,7 +388,7 @@ const CarRental: React.FC = () => {
                         ))}
                       </div>
                       <span className="ml-2 text-sm text-slate-600">
-                        {car.rating} ({car.reviews} reviews)
+                        {car.rating} rating
                       </span>
                     </div>
 
@@ -431,16 +399,16 @@ const CarRental: React.FC = () => {
                         {car.fuelType}
                       </div>
                       <div className="flex items-center text-sm text-slate-600">
-                        <Settings className="w-4 h-4 mr-2" />
-                        {car.transmission}
+                        <MapPin className="w-4 h-4 mr-2" />
+                        {car.location}
                       </div>
                       <div className="flex items-center text-sm text-slate-600">
                         <Users className="w-4 h-4 mr-2" />
                         {car.seats} seats
                       </div>
                       <div className="flex items-center text-sm text-slate-600">
-                        <MapPin className="w-4 h-4 mr-2" />
-                        {car.location}
+                        <Car className="w-4 h-4 mr-2" />
+                        {car.carType}
                       </div>
                     </div>
 
@@ -466,18 +434,18 @@ const CarRental: React.FC = () => {
                       <div className="flex items-center">
                         <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
                           <span className="text-sm font-medium text-indigo-600">
-                            {car.owner.name.charAt(0)}
+                            {car.ownerName.charAt(0)}
                           </span>
                         </div>
                         <div className="ml-3">
                           <div className="text-sm font-medium text-slate-800">
-                            {car.owner.name}
-                            {car.owner.verified && (
+                            {car.ownerName}
+                            {car.verified && (
                               <Shield className="w-3 h-3 text-green-500 ml-1 inline" />
                             )}
                           </div>
                           <div className="text-xs text-slate-600">
-                            Owner rating: {car.owner.rating} ⭐
+                            {car.totalRentals} rentals
                           </div>
                         </div>
                       </div>
@@ -487,10 +455,10 @@ const CarRental: React.FC = () => {
                     <div className="flex space-x-3">
                       <motion.button
                         onClick={() => handleRentNow(car)}
-                        disabled={!car.available}
+                        disabled={!car.isAvailable}
                         className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                        whileHover={car.available ? { scale: 1.03 } : {}}
-                        whileTap={car.available ? { scale: 0.97 } : {}}
+                        whileHover={car.isAvailable ? { scale: 1.03 } : {}}
+                        whileTap={car.isAvailable ? { scale: 0.97 } : {}}
                       >
                         Rent Now
                       </motion.button>
@@ -520,11 +488,25 @@ const CarRental: React.FC = () => {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-center py-12"
+                className="text-center py-20"
               >
-                <Car className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-800 mb-2">No cars found</h3>
-                <p className="text-slate-600">Try adjusting your filters, or post a rent_car listing via the API.</p>
+                <div className="w-24 h-24 bg-gradient-to-br from-slate-200 to-slate-300 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Car className="w-12 h-12 text-slate-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                  No cars available yet
+                </h3>
+                <p className="text-slate-600 mb-6">
+                  List your car first to start earning from rentals!
+                </p>
+                <motion.button
+                  onClick={() => window.location.href = '/list-car'}
+                  className="bg-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  List Your Car
+                </motion.button>
               </motion.div>
             )}
             </>

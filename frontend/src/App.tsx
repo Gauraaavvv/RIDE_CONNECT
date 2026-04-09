@@ -18,6 +18,8 @@ import CreateRide from './pages/CreateRide';
 import Profile from './pages/Profile';
 import CarRental from './pages/CarRental';
 import DriverServices from './pages/DriverServices';
+import BecomeDriver from './pages/BecomeDriver';
+import ListCar from './pages/ListCar';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -89,6 +91,8 @@ const AppContent: React.FC = () => {
               <Route path="/profile" element={<Profile />} />
               <Route path="/car-rental" element={<CarRental />} />
               <Route path="/driver-services" element={<DriverServices />} />
+              <Route path="/become-driver" element={<BecomeDriver />} />
+              <Route path="/list-car" element={<ListCar />} />
             </Routes>
           </motion.div>
         </AnimatePresence>

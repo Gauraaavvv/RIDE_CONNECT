@@ -249,6 +249,105 @@ export const achievementAPI = {
   },
 };
 
+export const driverAPI = {
+  register: async (driverData: {
+    name: string;
+    phone: string;
+    experience: number;
+    licenseNumber: string;
+    location: string;
+    pricePerHour: number;
+    availability?: string;
+  }) => {
+    const response = await api.post('/driver/register', driverData);
+    return response.data.data?.driver || response.data.driver || response.data;
+  },
+
+  list: async (params?: {
+    location?: string;
+    availability?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: string;
+  }) => {
+    const response = await api.get('/driver/list', { params });
+    return response.data.data?.drivers || response.data.drivers || response.data;
+  },
+
+  getById: async (id: string) => {
+    const response = await api.get(`/driver/${id}`);
+    return response.data.data?.driver || response.data.driver || response.data;
+  },
+
+  updateAvailability: async (id: string, isAvailable: boolean) => {
+    const response = await api.patch(`/driver/${id}/availability`, { isAvailable });
+    return response.data.data?.driver || response.data.driver || response.data;
+  },
+
+  delete: async (id: string) => {
+    const response = await api.delete(`/driver/${id}`);
+    return response.data;
+  },
+};
+
+export const carAPI = {
+  add: async (carData: {
+    ownerName: string;
+    carModel: string;
+    carNumber: string;
+    seats: number;
+    pricePerDay: number;
+    location: string;
+    availability?: string;
+    carType?: string;
+    fuelType?: string;
+    year?: number;
+    features?: string[];
+  }) => {
+    const response = await api.post('/cars/add', carData);
+    return response.data.data?.car || response.data.car || response.data;
+  },
+
+  list: async (params?: {
+    location?: string;
+    availability?: string;
+    carType?: string;
+    fuelType?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    seats?: number;
+    sortBy?: string;
+  }) => {
+    const response = await api.get('/cars/list', { params });
+    return response.data.data?.cars || response.data.cars || response.data;
+  },
+
+  getById: async (id: string) => {
+    const response = await api.get(`/cars/${id}`);
+    return response.data.data?.car || response.data.car || response.data;
+  },
+
+  updateAvailability: async (id: string, isAvailable: boolean) => {
+    const response = await api.patch(`/cars/${id}/availability`, { isAvailable });
+    return response.data.data?.car || response.data.car || response.data;
+  },
+
+  update: async (id: string, updates: {
+    pricePerDay?: number;
+    availability?: string;
+    features?: string[];
+    isAvailable?: boolean;
+  }) => {
+    const response = await api.patch(`/cars/${id}`, updates);
+    return response.data.data?.car || response.data.car || response.data;
+  },
+
+  delete: async (id: string) => {
+    const response = await api.delete(`/cars/${id}`);
+    return response.data;
+  },
+};
+
 export const analyticsAPI = {
   rideStats: async () => {
     const response = await api.get('/analytics/rides');

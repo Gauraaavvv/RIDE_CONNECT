@@ -141,6 +141,8 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/driver', require('./routes/driver'));
+app.use('/api/cars', require('./routes/cars'));
 
 // 404 handler
 app.use((req, res) => {

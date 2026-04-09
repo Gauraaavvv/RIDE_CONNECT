@@ -101,7 +101,11 @@ app.use(compression());
 app.use(morgan('combined'));
 
 // CORS (must include Vercel frontends — see corsAllowedOrigins)
-app.use(cors(corsOptions));
+//app.use(cors(corsOptions));
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

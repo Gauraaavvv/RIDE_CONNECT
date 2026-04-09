@@ -111,11 +111,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  next();
-});
+// Enhanced request logging middleware
+const requestLogger = require('./middleware/requestLogger');
+app.use(requestLogger);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -155,7 +153,17 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  // Enhanced error logging for production debugging
+  console.error('=== GLOBAL ERROR HANDLER ===');
+  console.error('Timestamp:', new Date().toISOString());
+  console.error('Request URL:', req.originalUrl);
+  console.error('Request Method:', req.method);
+  console.error('Request Body:', req.body);
+  console.error('Error Name:', err.name);
+  console.error('Error Message:', err.message);
+  console.error('Error Stack:', err.stack);
+  console.error('Error Code:', err.code);
+  console.error('=== END ERROR DETAILS ===');
   
   // MongoDB duplicate key error
   if (err.code === 11000) {
@@ -192,22 +200,102 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Default error
-  res.status(err.status || 500).json({
+  // bcrypt errors
+  if (err.message && err.message.includes('bcrypt')) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Password processing error'
+    });
+  }
+
+  // Mongoose connection errors
+  if (err.name === 'MongooseServerSelectionError') {
+    return res.status(503).json({
+      status: 'error',
+      message: 'Database connection error'
+    });
+  }
+
+  if (err.name === 'MongooseError') {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Database operation error'
+    });
+  }
+
+  // Handle undefined/null errors
+  if (err.message && err.message.includes('Cannot read propert')) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error - data processing issue'
+    });
+  }
+
+  // Handle timeout errors
+  if (err.name === 'TimeoutError' || err.message.includes('timeout')) {
+    return res.status(504).json({
+      status: 'error',
+      message: 'Request timeout'
+    });
+  }
+
+  // Default error - never crash the server
+  const statusCode = err.status || 500;
+  res.status(statusCode).json({
     status: 'error',
     message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      details: {
+        name: err.name,
+        code: err.code
+      }
+    })
   });
+});
+
+// Process error handlers to prevent crashes
+process.on('uncaughtException', (error) => {
+  console.error('=== UNCAUGHT EXCEPTION ===');
+  console.error('Timestamp:', new Date().toISOString());
+  console.error('Error:', error);
+  console.error('Stack:', error.stack);
+  console.error('=== END UNCAUGHT EXCEPTION ===');
+  
+  // Don't exit the process in production, just log and continue
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Uncaught exception handled, server continues running');
+  } else {
+    // In development, we might want to see the crash
+    process.exit(1);
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('=== UNHANDLED REJECTION ===');
+  console.error('Timestamp:', new Date().toISOString());
+  console.error('Promise:', promise);
+  console.error('Reason:', reason);
+  console.error('=== END UNHANDLED REJECTION ===');
+  
+  // Don't exit the process in production
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Unhandled rejection handled, server continues running');
+  } else {
+    // In development, we might want to see the crash
+    process.exit(1);
+  }
 });
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`🚀 AssamRideConnect Backend running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🌐 API Base URL: http://localhost:${PORT}/api`);
-  console.log(`💬 WebSocket (Socket.IO) enabled`);
+  console.log(`AssamRideConnect Backend running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`API Base URL: http://localhost:${PORT}/api`);
+  console.log(`WebSocket (Socket.IO) enabled`);
+  console.log('Process error handlers installed');
 });
 
-module.exports = { app, server, io }; 
+module.exports = { app, server, io };

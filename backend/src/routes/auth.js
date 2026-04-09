@@ -52,47 +52,149 @@ const buildAuthPayload = (user, message) => {
 // Register user
 router.post('/register', async (req, res) => {
   try {
+    // Log request body for debugging (in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Register request body:', {
+        ...req.body,
+        password: req.body.password ? '[REDACTED]' : undefined
+      });
+    }
+
     const { name, email, phone, password } = req.body;
 
-    if (!name || !email || !phone || !password) {
+    // Defensive checks for undefined/null values
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return res.status(400).json({
         status: 'error',
-        error: 'Name, email, phone, and password are required'
+        message: 'Valid name is required'
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [
-        { email: email.toLowerCase() },
-        { phone }
-      ]
-    });
+    if (!email || typeof email !== 'string' || email.trim().length === 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Valid email is required'
+      });
+    }
+
+    if (!phone || typeof phone !== 'string' || phone.trim().length === 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Valid phone number is required'
+      });
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Sanitize inputs
+    const sanitizedName = name.trim().substring(0, 50);
+    const sanitizedEmail = email.trim().toLowerCase();
+    const sanitizedPhone = phone.trim();
+
+    // Check if user already exists with explicit error handling
+    let existingUser;
+    try {
+      existingUser = await User.findOne({
+        $or: [
+          { email: sanitizedEmail },
+          { phone: sanitizedPhone }
+        ]
+      }).lean();
+    } catch (dbError) {
+      console.error('Database error checking existing user:', dbError);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Database error during user validation'
+      });
+    }
+
     if (existingUser) {
+      const field = existingUser.email === sanitizedEmail ? 'email' : 'phone';
       return res.status(400).json({
         status: 'error',
-        error: existingUser.email === email.toLowerCase()
-          ? 'User already exists with this email'
-          : 'User already exists with this phone number'
+        message: `User already exists with this ${field}`,
+        field: field
       });
     }
 
-    // Create new user
+    // Create new user with defensive programming
     const user = new User({
-      name,
-      email: email.toLowerCase(),
-      phone,
+      name: sanitizedName,
+      email: sanitizedEmail,
+      phone: sanitizedPhone,
       password
     });
 
-    await user.save();
+    // Save user with explicit error handling
+    let savedUser;
+    try {
+      savedUser = await user.save();
+    } catch (saveError) {
+      console.error('User save error:', saveError);
+      
+      // Handle specific MongoDB errors
+      if (saveError.code === 11000) {
+        const field = Object.keys(saveError.keyValue)[0];
+        return res.status(400).json({
+          status: 'error',
+          message: `${field} already exists`,
+          field: field
+        });
+      }
 
-    res.status(201).json(buildAuthPayload(user, 'User registered successfully'));
+      if (saveError.name === 'ValidationError') {
+        const errors = Object.values(saveError.errors).map(e => e.message);
+        return res.status(400).json({
+          status: 'error',
+          message: 'Validation failed',
+          errors: errors
+        });
+      }
+
+      // Handle bcrypt/other errors
+      if (saveError.message && saveError.message.includes('bcrypt')) {
+        return res.status(500).json({
+          status: 'error',
+          message: 'Password processing error'
+        });
+      }
+
+      return res.status(500).json({
+        status: 'error',
+        message: 'Error saving user to database'
+      });
+    }
+
+    // Build response with error handling
+    let response;
+    try {
+      response = buildAuthPayload(savedUser, 'User registered successfully');
+    } catch (payloadError) {
+      console.error('Error building auth payload:', payloadError);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Error generating authentication response'
+      });
+    }
+
+    res.status(201).json(response);
+
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Registration error - Full stack:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    
     res.status(500).json({
       status: 'error',
-      error: error.message || 'Server error during registration'
+      message: 'Internal server error during registration'
     });
   }
 });

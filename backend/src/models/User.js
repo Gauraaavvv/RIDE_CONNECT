@@ -313,10 +313,35 @@ userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   
   try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
+    // Defensive check for password
+    if (!this.password || typeof this.password !== 'string') {
+      return next(new Error('Password must be a string'));
+    }
+    
+    if (this.password.length < 6) {
+      return next(new Error('Password must be at least 6 characters long'));
+    }
+    
+    // Generate salt with error handling
+    let salt;
+    try {
+      salt = await bcrypt.genSalt(12);
+    } catch (saltError) {
+      console.error('Error generating bcrypt salt:', saltError);
+      return next(new Error('Error processing password - salt generation failed'));
+    }
+    
+    // Hash password with error handling
+    try {
+      this.password = await bcrypt.hash(this.password, salt);
+    } catch (hashError) {
+      console.error('Error hashing password:', hashError);
+      return next(new Error('Error processing password - hashing failed'));
+    }
+    
     next();
   } catch (error) {
+    console.error('Unexpected error in password pre-save hook:', error);
     next(error);
   }
 });
@@ -409,7 +434,7 @@ userSchema.statics.getTopDrivers = function(limit = 10) {
 
 // Create indexes
 userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 });
+userSchema.index({ phone: 1 }, { unique: true });
 userSchema.index({ rating: -1 });
 userSchema.index({ location: '2dsphere' });
 

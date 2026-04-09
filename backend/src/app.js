@@ -123,6 +123,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/test', (req, res) => {
+  res.send("WORKING BACKEND");
+});
+
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/rides', require('./routes/rides'));

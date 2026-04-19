@@ -80,7 +80,7 @@ interface RecentRide {
   destination: string;
   date: string;
   type: 'driver' | 'passenger';
-  status: 'completed' | 'upcoming' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rejected' | 'upcoming';
   rating?: number;
   amount: number;
 }
@@ -405,7 +405,12 @@ const Profile: React.FC = () => {
         }
 
         const recentRides: RecentRide[] = bookings
-          .filter((b: Record<string, unknown>) => String(b.status) !== 'pending')
+          .filter((b: Record<string, unknown>) => {
+            const st = String(b.status || '');
+            // Passengers and Drivers should only see confirmed, in_progress, completed, cancelled, or rejected here.
+            // Pending requests are handled separately in the Pending Requests section.
+            return ['confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'].includes(st);
+          })
           .slice(0, 12)
           .map((b: Record<string, unknown>) => {
           const ride = b.ride as Record<string, unknown> | undefined;
@@ -413,13 +418,7 @@ const Profile: React.FC = () => {
             ? String((b.driver as { _id: string })._id)
             : String(b.driver || '');
           const isDriver = driverId === uid;
-          const st = String(b.status || '');
-          let status: RecentRide['status'] = 'upcoming';
-          if (st === 'completed') {
-            status = 'completed';
-          } else if (st === 'cancelled') {
-            status = 'cancelled';
-          }
+          const st = String(b.status || 'pending');
           const rideDate = ride?.date ? new Date(String(ride.date)).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
           return {
             id: String(b._id),
@@ -427,7 +426,7 @@ const Profile: React.FC = () => {
             destination: String(ride?.destination || '—'),
             date: rideDate,
             type: isDriver ? 'driver' : 'passenger',
-            status,
+            status: st as RecentRide['status'],
             amount: Number(b.amount || 0),
           };
         });
@@ -514,9 +513,13 @@ const Profile: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'text-green-600 bg-green-100';
-      case 'upcoming': return 'text-blue-600 bg-blue-100';
-      case 'cancelled': return 'text-red-600 bg-red-100';
+      case 'completed': return 'text-emerald-600 bg-emerald-100';
+      case 'confirmed': return 'text-cyan-600 bg-cyan-100';
+      case 'in_progress': return 'text-blue-600 bg-blue-100';
+      case 'upcoming': return 'text-indigo-600 bg-indigo-100';
+      case 'pending': return 'text-amber-600 bg-amber-100';
+      case 'cancelled':
+      case 'rejected': return 'text-rose-600 bg-rose-100';
       default: return 'text-slate-600 bg-slate-100';
     }
   };
@@ -717,8 +720,8 @@ const Profile: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(ride.status)}`}>
-                            {ride.status}
+                          <div className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(ride.status)}`}>
+                            {ride.status.replace('_', ' ')}
                           </div>
                           {ride.rating && (
                             <div className="flex items-center mt-1">
@@ -892,8 +895,8 @@ const Profile: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(ride.status)}`}>
-                          {ride.status}
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium capitalize inline-block ${getStatusColor(ride.status)}`}>
+                          {ride.status.replace('_', ' ')}
                         </div>
                         <div className="text-lg font-bold text-slate-800 mt-1">₹{ride.amount}</div>
                         {ride.rating && (

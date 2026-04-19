@@ -7,12 +7,13 @@ import {
   Phone, MessageCircle, Heart
 } from 'lucide-react';
 import { addNotification } from '../store/slices/notificationSlice';
-import { rideAPI, bookingAPI, carAPI } from '../services/api';
+import { rideAPI, bookingAPI, carAPI, requestAPI } from '../services/api';
 import { RootState } from '../store/store';
 import PageShell from '../components/layout/PageShell';
 
 interface CarListing {
   _id: string;
+  userId?: string;
   ownerName: string;
   carModel: string;
   carNumber: string;
@@ -34,7 +35,7 @@ interface CarListing {
 
 const CarRental: React.FC = () => {
   const dispatch = useDispatch();
-  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
@@ -42,6 +43,17 @@ const CarRental: React.FC = () => {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([]);
   const [carListings, setCarListings] = useState<CarListing[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
+
+  const toggleFeatures = (carId: string) => {
+    const newExpanded = new Set(expandedFeatures);
+    if (newExpanded.has(carId)) {
+      newExpanded.delete(carId);
+    } else {
+      newExpanded.add(carId);
+    }
+    setExpandedFeatures(newExpanded);
+  };
 
   const handleRentNow = async (car: CarListing) => {
     if (!isAuthenticated) {
@@ -55,24 +67,32 @@ const CarRental: React.FC = () => {
       );
       return;
     }
+
     try {
-      await bookingAPI.create({ rideId: car._id, days: 1 });
+      await requestAPI.create({
+        type: 'car',
+        entityId: car._id,
+        metadata: {
+          carModel: car.carModel,
+          carNumber: car.carNumber,
+          pricePerDay: car.pricePerDay
+        }
+      });
+
       dispatch(
         addNotification({
           type: 'success',
-          title: 'Request sent',
-          message: `Your rental request for ${car.carModel} has been submitted.`,
+          title: 'Rent Request Sent!',
+          message: `Your rent request for ${car.carModel} has been sent to ${car.ownerName}. They will contact you soon.`,
           duration: 5000,
         })
       );
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } } };
-      const msg = err.response?.data?.message || 'Could not create booking. Try again.';
+    } catch (error: any) {
       dispatch(
         addNotification({
           type: 'error',
-          title: 'Booking failed',
-          message: msg,
+          title: 'Rental failed',
+          message: error.response?.data?.message || 'Failed to send rent request',
           duration: 5000,
         })
       );
@@ -83,9 +103,36 @@ const CarRental: React.FC = () => {
     dispatch(addNotification({
       type: 'info',
       title: 'Message Sent!',
-      message: `Message sent to ${car.ownerName} about ${car.carModel}. They will reply soon!`,
-      duration: 5000
-    }));
+      message: `Message sent to ${car.ownerName} about the car. They will reply soon!`,
+      duration: 5000,
+    }))
+  };
+
+  const handleDeleteCar = async (car: CarListing) => {
+    if (!isAuthenticated) return;
+    
+    const confirmed = window.confirm('Are you sure you want to delete this car listing?');
+    if (!confirmed) return;
+
+    try {
+      await carAPI.delete(car._id);
+      setCarListings(carListings.filter(c => c._id !== car._id));
+      dispatch(addNotification({
+        type: 'success',
+        title: 'Car Deleted',
+        message: 'Your car listing has been deleted successfully.',
+        duration: 3000,
+      }));
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      const msg = err.response?.data?.message || 'Could not delete car. Please try again.';
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Delete failed',
+        message: msg,
+        duration: 3000,
+      }));
+    }
   };
 
   const handleCallOwner = (car: CarListing) => {
@@ -414,7 +461,7 @@ const CarRental: React.FC = () => {
 
                     {/* Features */}
                     <div className="flex flex-wrap gap-1 mb-4">
-                      {car.features.slice(0, 3).map(feature => (
+                      {car.features.slice(0, expandedFeatures.has(car._id) ? car.features.length : 3).map(feature => (
                         <span
                           key={feature}
                           className="px-2 py-1 bg-indigo-50 text-indigo-600 text-xs rounded-full"
@@ -422,10 +469,21 @@ const CarRental: React.FC = () => {
                           {feature}
                         </span>
                       ))}
-                      {car.features.length > 3 && (
-                        <span className="px-2 py-1 bg-slate-50 text-slate-600 text-xs rounded-full">
+                      {car.features.length > 3 && !expandedFeatures.has(car._id) && (
+                        <button
+                          onClick={() => toggleFeatures(car._id)}
+                          className="px-2 py-1 bg-slate-50 text-slate-600 text-xs rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                        >
                           +{car.features.length - 3} more
-                        </span>
+                        </button>
+                      )}
+                      {car.features.length > 3 && expandedFeatures.has(car._id) && (
+                        <button
+                          onClick={() => toggleFeatures(car._id)}
+                          className="px-2 py-1 bg-slate-50 text-slate-600 text-xs rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                        >
+                          Show less
+                        </button>
                       )}
                     </div>
 
@@ -462,6 +520,16 @@ const CarRental: React.FC = () => {
                       >
                         Rent Now
                       </motion.button>
+                      {isAuthenticated && user && car.userId === user.id && (
+                        <motion.button
+                          onClick={() => handleDeleteCar(car)}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                        >
+                          Delete
+                        </motion.button>
+                      )}
                       <motion.button 
                         onClick={() => handleMessageOwner(car)}
                         className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"

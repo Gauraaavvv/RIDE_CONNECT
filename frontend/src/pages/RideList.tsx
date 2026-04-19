@@ -10,9 +10,11 @@ import { addNotification } from '../store/slices/notificationSlice';
 import { RootState } from '../store/store';
 import { rideAPI, bookingAPI } from '../services/api';
 import PageShell from '../components/layout/PageShell';
+import Chat from '../components/chat/Chat';
 
 interface Ride {
   id: string;
+  driverId?: string;
   driverName: string;
   source: string;
   destination: string;
@@ -38,7 +40,7 @@ interface Ride {
 
 const RideList: React.FC = () => {
   const dispatch = useDispatch();
-  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const { isAuthenticated, user } = useSelector((state: RootState) => state.auth);
   const [rides, setRides] = useState<Ride[]>([]);
   const [filteredRides, setFilteredRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,8 @@ const RideList: React.FC = () => {
     verified: false,
     premium: false
   });
+  const [chatOpen, setChatOpen] = useState(false);
+  const [selectedRideForChat, setSelectedRideForChat] = useState<Ride | null>(null);
   const activeFilterCount = [
     selectedFilters.vehicleType,
     selectedFilters.priceRange,
@@ -111,8 +115,41 @@ const RideList: React.FC = () => {
       type: 'info',
       title: 'Call Initiated!',
       message: `Calling ${ride.driverName}. Please wait...`,
-      duration: 3000
+      duration: 5000
     }));
+  };
+
+  const handleOpenChat = (ride: Ride) => {
+    setSelectedRideForChat(ride);
+    setChatOpen(true);
+  };
+
+  const handleDeleteRide = async (ride: Ride) => {
+    if (!isAuthenticated) return;
+    
+    const confirmed = window.confirm('Are you sure you want to delete this ride listing?');
+    if (!confirmed) return;
+
+    try {
+      await rideAPI.deleteRide(ride.id);
+      setRides(rides.filter(r => r.id !== ride.id));
+      setFilteredRides(filteredRides.filter(r => r.id !== ride.id));
+      dispatch(addNotification({
+        type: 'success',
+        title: 'Ride Deleted',
+        message: 'Your ride listing has been deleted successfully.',
+        duration: 3000
+      }));
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      const msg = err.response?.data?.message || 'Could not delete ride. Please try again.';
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Delete failed',
+        message: msg,
+        duration: 3000
+      }));
+    }
   };
 
   useEffect(() => {
@@ -523,10 +560,10 @@ const RideList: React.FC = () => {
                       <Eye className="w-5 h-5" />
                     </motion.button>
                     <motion.button
-                      onClick={() => handleMessageDriver(ride)}
+                      onClick={() => handleOpenChat(ride)}
                       className="p-2 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                       whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
+                      whileTap={{ scale: 0.95 }}
                     >
                       <MessageCircle className="w-5 h-5" />
                     </motion.button>
@@ -546,6 +583,16 @@ const RideList: React.FC = () => {
                     >
                       Book Now
                     </motion.button>
+                    {isAuthenticated && user && ride.driverId === user.id && (
+                      <motion.button
+                        onClick={() => handleDeleteRide(ride)}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        Delete
+                      </motion.button>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -576,6 +623,19 @@ const RideList: React.FC = () => {
           </motion.div>
         )}
       </div>
+      
+      {/* Chat Component */}
+      {chatOpen && selectedRideForChat && user && (
+        <Chat
+          receiverId={selectedRideForChat.driverId || selectedRideForChat.id}
+          receiverName={selectedRideForChat.driverName}
+          receiverAvatar={undefined}
+          entityId={selectedRideForChat.id}
+          entityType="ride"
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </PageShell>
   );
 };

@@ -7,7 +7,7 @@ import {
   Languages, GraduationCap, Briefcase, DollarSign
 } from 'lucide-react';
 import { addNotification } from '../store/slices/notificationSlice';
-import { rideAPI, bookingAPI, driverAPI } from '../services/api';
+import { rideAPI, bookingAPI, driverAPI, requestAPI } from '../services/api';
 import { RootState } from '../store/store';
 import PageShell from '../components/layout/PageShell';
 
@@ -53,22 +53,29 @@ const DriverServices: React.FC = () => {
       return;
     }
     try {
-      await bookingAPI.create({ rideId: driver._id, hours: 4 });
+      await requestAPI.create({
+        type: 'driver',
+        entityId: driver._id,
+        metadata: {
+          driverName: driver.name,
+          pricePerHour: driver.pricePerHour
+        }
+      });
       dispatch(
         addNotification({
           type: 'success',
-          title: 'Request sent',
-          message: `Your booking request for ${driver.name} has been submitted.`,
+          title: 'Hire Request Sent!',
+          message: `Your hire request for ${driver.name} has been submitted.`,
           duration: 5000,
         })
       );
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
-      const msg = err.response?.data?.message || 'Could not create booking. Try again.';
+      const msg = err.response?.data?.message || 'Could not send hire request. Try again.';
       dispatch(
         addNotification({
           type: 'error',
-          title: 'Booking failed',
+          title: 'Hire failed',
           message: msg,
           duration: 5000,
         })

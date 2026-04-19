@@ -10,6 +10,7 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import Toast from './components/ui/Toast';
 import AppPreloader from './components/ui/AppPreloader';
+import LandingPage from './pages/LandingPage';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -83,7 +84,8 @@ const AppContent: React.FC = () => {
             transition={{ duration: 0.34, ease: 'easeOut' }}
           >
             <Routes location={location}>
-              <Route path="/" element={<Home />} />
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/home" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/rides" element={<RideList />} />

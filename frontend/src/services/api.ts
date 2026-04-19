@@ -227,10 +227,9 @@ export const bookingAPI = {
   create: async (body: {
     rideId: string;
     seats?: number;
-    days?: number;
-    hours?: number;
     pickupLocation?: string;
     dropLocation?: string;
+    specialRequests?: string;
   }) => {
     const response = await api.post('/bookings', body);
     return response.data.data?.booking || response.data.booking || response.data;
@@ -239,6 +238,91 @@ export const bookingAPI = {
   list: async (params?: { status?: string; page?: number; limit?: number }) => {
     const response = await api.get('/bookings', { params });
     return response.data.data?.bookings || response.data.bookings || response.data;
+  },
+
+  accept: async (id: string) => {
+    const response = await api.patch(`/bookings/${id}/accept`);
+    return response.data.data?.booking || response.data.booking || response.data;
+  },
+
+  reject: async (id: string) => {
+    const response = await api.patch(`/bookings/${id}/reject`);
+    return response.data.data?.booking || response.data.booking || response.data;
+  },
+};
+
+export const messageAPI = {
+  send: async (body: {
+    receiverId: string;
+    text: string;
+    entityId?: string;
+    entityType?: 'ride' | 'car' | 'driver' | null;
+  }) => {
+    const response = await api.post('/messages/send', body);
+    return response.data.data?.message || response.data.message || response.data;
+  },
+
+  getConversation: async (userId: string, params?: { limit?: number; skip?: number }) => {
+    const response = await api.get(`/messages/conversation/${userId}`, { params });
+    return response.data.data?.messages || response.data.messages || response.data;
+  },
+
+  getConversations: async () => {
+    const response = await api.get('/messages');
+    return response.data.data?.conversations || response.data.conversations || response.data;
+  },
+
+  markAsRead: async (id: string) => {
+    const response = await api.patch(`/messages/${id}/read`);
+    return response.data.data?.message || response.data.message || response.data;
+  },
+};
+
+export const notificationAPI = {
+  list: async (params?: { limit?: number; skip?: number; unreadOnly?: boolean }) => {
+    const response = await api.get('/notifications', { params });
+    return response.data.data?.notifications || response.data.notifications || response.data;
+  },
+
+  markAsRead: async (notificationIds?: string[]) => {
+    const response = await api.patch('/notifications/mark-read', { notificationIds });
+    return response.data.data?.unreadCount || response.data.unreadCount || response.data;
+  },
+
+  markSingleAsRead: async (id: string) => {
+    const response = await api.patch(`/notifications/${id}/read`);
+    return response.data.data?.notification || response.data.notification || response.data;
+  },
+
+  deleteAll: async () => {
+    const response = await api.delete('/notifications');
+    return response.data;
+  },
+};
+
+export const requestAPI = {
+  create: async (body: {
+    type: 'car' | 'driver';
+    entityId: string;
+    metadata?: any;
+  }) => {
+    const response = await api.post('/requests', body);
+    return response.data.data?.request || response.data.request || response.data;
+  },
+
+  list: async (params?: { type?: string; status?: string; sent?: string }) => {
+    const response = await api.get('/requests', { params });
+    return response.data.data?.requests || response.data.requests || response.data;
+  },
+
+  accept: async (id: string) => {
+    const response = await api.patch(`/requests/${id}/accept`);
+    return response.data.data?.request || response.data.request || response.data;
+  },
+
+  reject: async (id: string) => {
+    const response = await api.patch(`/requests/${id}/reject`);
+    return response.data.data?.request || response.data.request || response.data;
   },
 };
 
@@ -330,6 +414,11 @@ export const carAPI = {
   updateAvailability: async (id: string, isAvailable: boolean) => {
     const response = await api.patch(`/cars/${id}/availability`, { isAvailable });
     return response.data.data?.car || response.data.car || response.data;
+  },
+
+  rentCar: async (id: string, data: { days?: number; pickupLocation?: string; specialRequests?: string }) => {
+    const response = await api.post(`/cars/${id}/rent`, data);
+    return response.data.data?.rental || response.data.rental || response.data;
   },
 
   update: async (id: string, updates: {

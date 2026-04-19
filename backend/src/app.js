@@ -8,6 +8,8 @@ const compression = require('compression');
 const { Server } = require('socket.io');
 const connectDB = require('./config/database');
 const { attachChatSocket, emitChatMessage } = require('./socket/chatSocket');
+const { attachBookingSocket, emitNewBookingRequest, emitBookingStatusUpdate } = require('./socket/bookingSocket');
+const { attachMessagingSocket, attachCallingSocket } = require('./socket/messagingSocket');
 require('dotenv').config();
 
 const app = express();
@@ -62,8 +64,13 @@ const io = new Server(server, {
 });
 
 attachChatSocket(io);
+attachBookingSocket(io);
+attachMessagingSocket(io);
+attachCallingSocket(io);
 app.set('io', io);
 app.set('emitChatMessage', emitChatMessage);
+app.set('emitNewBookingRequest', emitNewBookingRequest);
+app.set('emitBookingStatusUpdate', emitBookingStatusUpdate);
 
 // Connect to MongoDB
 connectDB();
@@ -136,6 +143,8 @@ app.use('/api/rides', require('./routes/rides'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/messages', require('./routes/messages'));
+app.use('/api/requests', require('./routes/requests'));
 app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/chat', require('./routes/chat'));

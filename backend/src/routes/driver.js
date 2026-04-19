@@ -3,8 +3,8 @@ const router = express.Router();
 const Driver = require('../models/Driver');
 const auth = require('../middleware/auth');
 
-// Register a new driver
-router.post('/register', async (req, res) => {
+// Register a new driver (protected route)
+router.post('/register', auth, async (req, res) => {
   try {
     const {
       name,
@@ -42,7 +42,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Create new driver
+    // Create new driver with required userId
     const driver = new Driver({
       name,
       phone,
@@ -50,13 +50,9 @@ router.post('/register', async (req, res) => {
       licenseNumber,
       location,
       pricePerHour,
-      availability: availability || 'flexible'
+      availability: availability || 'flexible',
+      userId: req.user.id  // Required field - always set from authenticated user
     });
-
-    // If user is authenticated, link the driver to user
-    if (req.user) {
-      driver.userId = req.user.id;
-    }
 
     await driver.save();
 

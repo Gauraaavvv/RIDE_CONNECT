@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import { addNotification } from '../store/slices/notificationSlice';
 import { RootState } from '../store/store';
-import { userAPI, achievementAPI } from '../services/api';
+import { userAPI, achievementAPI, bookingAPI } from '../services/api';
 import PageShell from '../components/layout/PageShell';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 interface AnimatedCounterProps {
   value: number;
@@ -97,11 +98,22 @@ const Profile: React.FC = () => {
   const { isAuthenticated } = useSelector((state: RootState) => state.auth);
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', phone: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [settingsPrivacy, setSettingsPrivacy] = useState<UserPreferences['privacy']>('public');
   const [settingsNotifications, setSettingsNotifications] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [pendingBookings, setPendingBookings] = useState<any[]>([]);
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    type: '',
+    id: '',
+    title: '',
+    message: ''
+  });
 
   useEffect(() => {
     if (!userProfile) {
@@ -154,6 +166,137 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handleEditProfile = () => {
+    if (!userProfile) return;
+    setEditForm({
+      name: userProfile.name,
+      phone: userProfile.phone.replace('+91 ', '').replace(/ /g, '')
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!userProfile) return;
+    setSavingProfile(true);
+    try {
+      await userAPI.updateProfile({
+        name: editForm.name,
+        phone: editForm.phone
+      });
+      setUserProfile({
+        ...userProfile,
+        name: editForm.name,
+        phone: editForm.phone.length === 10 ? `+91 ${editForm.phone.slice(0, 5)} ${editForm.phone.slice(5)}` : editForm.phone
+      });
+      setShowEditModal(false);
+      dispatch(
+        addNotification({
+          type: 'success',
+          title: 'Profile Updated!',
+          message: 'Your profile has been updated successfully.',
+          duration: 5000,
+        })
+      );
+    } catch {
+      dispatch(
+        addNotification({
+          type: 'error',
+          title: 'Update failed',
+          message: 'Could not update profile. Try again.',
+          duration: 5000,
+        })
+      );
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleAcceptBooking = async (bookingId: string) => {
+    try {
+      await bookingAPI.accept(bookingId);
+      setPendingBookings(pendingBookings.filter(b => b._id !== bookingId));
+      dispatch(
+        addNotification({
+          type: 'success',
+          title: 'Booking Accepted',
+          message: 'Booking has been accepted successfully.',
+          duration: 3000,
+        })
+      );
+    } catch {
+      dispatch(
+        addNotification({
+          type: 'error',
+          title: 'Accept Failed',
+          message: 'Could not accept booking. Try again.',
+          duration: 3000,
+        })
+      );
+    }
+  };
+
+  const handleRejectBooking = async (bookingId: string) => {
+    try {
+      await bookingAPI.reject(bookingId);
+      setPendingBookings(pendingBookings.filter(b => b._id !== bookingId));
+      dispatch(
+        addNotification({
+          type: 'success',
+          title: 'Booking Rejected',
+          message: 'Booking has been rejected.',
+          duration: 3000,
+        })
+      );
+    } catch {
+      dispatch(
+        addNotification({
+          type: 'error',
+          title: 'Reject Failed',
+          message: 'Could not reject booking. Try again.',
+          duration: 3000,
+        })
+      );
+    }
+  };
+
+  const handleDeleteBooking = (bookingId: string) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'booking',
+      id: bookingId,
+      title: 'Delete Booking',
+      message: 'Are you sure you want to delete this booking? This action cannot be undone.'
+    });
+  };
+
+  const confirmDelete = async () => {
+    try {
+      if (deleteModal.type === 'booking') {
+        await bookingAPI.reject(deleteModal.id);
+        setPendingBookings(pendingBookings.filter(b => b._id !== deleteModal.id));
+        dispatch(
+          addNotification({
+            type: 'success',
+            title: 'Booking Deleted',
+            message: 'Booking has been deleted successfully.',
+            duration: 3000,
+          })
+        );
+      }
+      setDeleteModal({ isOpen: false, type: '', id: '', title: '', message: '' });
+    } catch {
+      dispatch(
+        addNotification({
+          type: 'error',
+          title: 'Delete Failed',
+          message: 'Could not delete. Try again.',
+          duration: 3000,
+        })
+      );
+      setDeleteModal({ isOpen: false, type: '', id: '', title: '', message: '' });
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       setLoading(false);
@@ -180,6 +323,15 @@ const Profile: React.FC = () => {
         }
         const bookings = ridesRes.bookings || ridesRes.data?.bookings || [];
         const uid = String(u.id);
+        
+        // Filter pending bookings where user is the driver
+        const pending = bookings.filter((b: any) => {
+          const driverId = b.driver && typeof b.driver === 'object' && b.driver !== null && '_id' in b.driver
+            ? String((b.driver as { _id: string })._id)
+            : String(b.driver || '');
+          return driverId === uid && b.status === 'pending';
+        });
+        setPendingBookings(pending);
         const recentRides: RecentRide[] = bookings.slice(0, 12).map((b: Record<string, unknown>) => {
           const ride = b.ride as Record<string, unknown> | undefined;
           const driverId = b.driver && typeof b.driver === 'object' && b.driver !== null && '_id' in b.driver
@@ -389,7 +541,7 @@ const Profile: React.FC = () => {
 
             {/* Edit Button */}
             <motion.button
-              onClick={() => setIsEditing(!isEditing)}
+              onClick={handleEditProfile}
               className="btn-outline"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -495,6 +647,63 @@ const Profile: React.FC = () => {
                   </div>
                 </motion.div>
               </div>
+
+              {/* Pending Booking Requests */}
+              {pendingBookings.length > 0 && (
+                <div className="lg:col-span-3">
+                  <motion.div
+                    className="card"
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, duration: 0.6 }}
+                  >
+                    <h2 className="text-xl font-bold text-slate-800 mb-4">Pending Booking Requests</h2>
+                    <div className="space-y-4">
+                      {pendingBookings.map((booking) => (
+                        <motion.div
+                          key={booking._id}
+                          className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          whileHover={{ scale: 1.01 }}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center">
+                              <Users className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-slate-800">
+                                {booking.ride?.source} → {booking.ride?.destination}
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                Passenger: {booking.passenger?.name || 'Unknown'} • Seats: {booking.seats}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex space-x-2">
+                            <motion.button
+                              onClick={() => handleAcceptBooking(booking._id)}
+                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Accept
+                            </motion.button>
+                            <motion.button
+                              onClick={() => handleRejectBooking(booking._id)}
+                              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Reject
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+                </div>
+              )}
 
               {/* Quick Stats & Preferences */}
               <div className="space-y-6">
@@ -753,7 +962,83 @@ const Profile: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Edit Profile Modal */}
+        <AnimatePresence>
+          {showEditModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowEditModal(false)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="surface-panel max-w-md w-full mx-4 p-6"
+              >
+                <h2 className="text-xl font-bold text-slate-800 mb-4">Edit Profile</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Name</label>
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="input-field w-full"
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="input-field w-full"
+                      placeholder="Enter 10-digit phone number"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <motion.button
+                    onClick={() => setShowEditModal(false)}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                    whileHover={!savingProfile ? { scale: 1.02 } : {}}
+                    whileTap={!savingProfile ? { scale: 0.98 } : {}}
+                  >
+                    {savingProfile ? 'Saving...' : 'Save'}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+      
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteModal.isOpen}
+        title={deleteModal.title}
+        message={deleteModal.message}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteModal({ isOpen: false, type: '', id: '', title: '', message: '' })}
+        type="danger"
+      />
     </PageShell>
   );
 };

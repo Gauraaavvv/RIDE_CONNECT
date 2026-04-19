@@ -154,8 +154,8 @@ router.post('/', auth, async (req, res) => {
 
     await booking.save();
 
-    // Add passenger to ride
-    await ride.addPassenger(req.user.id, Number(seats), normalizedPickup.name, normalizedDrop.name);
+    // DO NOT immediately add passenger to ride - owner must approve first
+    // await ride.addPassenger(req.user.id, Number(seats), normalizedPickup.name, normalizedDrop.name);
 
     // Add notification
     await booking.addNotification(
@@ -170,6 +170,24 @@ router.post('/', auth, async (req, res) => {
       ride.driver
     );
 
+    // Emit real-time notification to driver via Socket.io
+    const io = req.app.get('io');
+    const emitNewBookingRequest = req.app.get('emitNewBookingRequest');
+    if (io && emitNewBookingRequest) {
+      emitNewBookingRequest(io, ride.driver.toString(), {
+        bookingId: booking._id,
+        passenger: req.user.name,
+        ride: {
+          source: ride.source,
+          destination: ride.destination,
+          date: ride.date,
+          time: ride.time
+        },
+        seats: booking.seats,
+        status: 'pending'
+      });
+    }
+
     res.status(201).json({
       status: 'success',
       message: 'Booking created successfully',
@@ -183,6 +201,148 @@ router.post('/', auth, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to create booking',
+      error: error.message
+    });
+  }
+});
+
+// @route   PATCH /api/bookings/:id/accept
+// @desc    Accept a booking request (owner only)
+// @access  Private
+router.patch('/:id/accept', auth, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id).populate('ride');
+    
+    if (!booking) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Booking not found'
+      });
+    }
+
+    // Only the driver/owner can accept bookings
+    if (booking.driver.toString() !== req.user.id.toString()) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only the driver can accept this booking'
+      });
+    }
+
+    if (booking.status !== 'pending') {
+      return res.status(400).json({
+        status: 'error',
+        message: `Cannot accept booking with status: ${booking.status}`
+      });
+    }
+
+    // Update booking status
+    booking.status = 'confirmed';
+    await booking.save();
+
+    // Add passenger to ride (now that it's accepted)
+    if (booking.ride) {
+      await booking.ride.addPassenger(
+        booking.passenger,
+        booking.seats,
+        booking.pickupLocation.name,
+        booking.dropLocation.name
+      );
+    }
+
+    // Notify passenger
+    await booking.addNotification(
+      'booking_accepted',
+      `Your booking has been accepted by the driver`,
+      booking.passenger
+    );
+
+    // Emit real-time notification to passenger via Socket.io
+    const io = req.app.get('io');
+    const emitBookingStatusUpdate = req.app.get('emitBookingStatusUpdate');
+    if (io && emitBookingStatusUpdate) {
+      emitBookingStatusUpdate(io, booking.passenger.toString(), {
+        bookingId: booking._id,
+        status: 'confirmed',
+        message: 'Your booking has been accepted'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Booking accepted successfully',
+      data: { booking: await booking.populate(['ride', 'driver', 'passenger']) }
+    });
+  } catch (error) {
+    console.error('Accept booking error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to accept booking',
+      error: error.message
+    });
+  }
+});
+
+// @route   PATCH /api/bookings/:id/reject
+// @desc    Reject a booking request (owner only)
+// @access  Private
+router.patch('/:id/reject', auth, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    
+    if (!booking) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Booking not found'
+      });
+    }
+
+    // Only the driver/owner can reject bookings
+    if (booking.driver.toString() !== req.user.id.toString()) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only the driver can reject this booking'
+      });
+    }
+
+    if (booking.status !== 'pending') {
+      return res.status(400).json({
+        status: 'error',
+        message: `Cannot reject booking with status: ${booking.status}`
+      });
+    }
+
+    // Update booking status
+    booking.status = 'rejected';
+    await booking.save();
+
+    // Notify passenger
+    await booking.addNotification(
+      'booking_rejected',
+      `Your booking has been rejected by the driver`,
+      booking.passenger
+    );
+
+    // Emit real-time notification to passenger via Socket.io
+    const io = req.app.get('io');
+    const emitBookingStatusUpdate = req.app.get('emitBookingStatusUpdate');
+    if (io && emitBookingStatusUpdate) {
+      emitBookingStatusUpdate(io, booking.passenger.toString(), {
+        bookingId: booking._id,
+        status: 'rejected',
+        message: 'Your booking has been rejected'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Booking rejected successfully',
+      data: { booking: await booking.populate(['ride', 'driver', 'passenger']) }
+    });
+  } catch (error) {
+    console.error('Reject booking error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to reject booking',
       error: error.message
     });
   }

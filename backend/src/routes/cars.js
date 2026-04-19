@@ -3,8 +3,8 @@ const router = express.Router();
 const Car = require('../models/Car');
 const auth = require('../middleware/auth');
 
-// Add a new car for rent
-router.post('/add', async (req, res) => {
+// Add a new car for rent (protected route)
+router.post('/add', auth, async (req, res) => {
   try {
     const {
       ownerName,
@@ -37,7 +37,7 @@ router.post('/add', async (req, res) => {
       });
     }
 
-    // Create new car
+    // Create new car with required userId
     const car = new Car({
       ownerName,
       carModel,
@@ -49,13 +49,9 @@ router.post('/add', async (req, res) => {
       carType: carType || 'sedan',
       fuelType: fuelType || 'petrol',
       year: year || new Date().getFullYear(),
-      features: features || []
+      features: features || [],
+      userId: req.user.id  // Required field - always set from authenticated user
     });
-
-    // If user is authenticated, link the car to user
-    if (req.user) {
-      car.userId = req.user.id;
-    }
 
     await car.save();
 
@@ -310,6 +306,107 @@ router.patch('/:id', auth, async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Internal server error while updating car'
+    });
+  }
+});
+
+// Rent a car (protected route)
+router.post('/:id/rent', auth, async (req, res) => {
+  try {
+    const { days = 1, pickupLocation, specialRequests } = req.body;
+    const carId = req.params.id;
+
+    if (!carId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'carId is required'
+      });
+    }
+
+    // Validate car exists and is available
+    const car = await Car.findById(carId);
+    if (!car) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Car not found'
+      });
+    }
+
+    if (!car.isAvailable) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Car is not available for rent'
+      });
+    }
+
+    if (car.userId && car.userId.toString() === req.user.id.toString()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'You cannot rent your own car'
+      });
+    }
+
+    // Calculate amount
+    const amount = car.pricePerDay * Number(days);
+
+    // Create a rental record (using Booking model for consistency)
+    const Booking = require('../models/Booking');
+    const rental = new Booking({
+      ride: carId, // Store car ID in ride field for consistency
+      passenger: req.user.id,
+      driver: car.userId,
+      seats: car.seats,
+      amount,
+      pickupLocation: pickupLocation || car.location,
+      dropLocation: car.location,
+      specialRequests: Array.isArray(specialRequests)
+        ? specialRequests
+        : specialRequests
+          ? [specialRequests]
+          : [],
+      payment: {
+        amount
+      },
+      serviceType: 'rent_car',
+      schedule: {
+        days: Number(days)
+      }
+    });
+
+    await rental.save();
+
+    // Update car rental count
+    car.totalRentals = (car.totalRentals || 0) + 1;
+    await car.save();
+
+    // Add notification to car owner
+    await rental.addNotification(
+      'car_rental_request',
+      `New car rental request from ${req.user.name} for ${car.carModel}`,
+      car.userId
+    );
+
+    // Add notification to renter
+    await rental.addNotification(
+      'car_rental_confirmed',
+      `Your rental request for ${car.carModel} has been sent to ${car.ownerName}`,
+      req.user.id
+    );
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Car rental request sent successfully',
+      data: {
+        rental: await rental.populate(['driver', 'passenger'])
+      }
+    });
+
+  } catch (error) {
+    console.error('Car rental error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create car rental',
+      error: error.message
     });
   }
 });

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Car, LogOut, Menu, ShieldCheck, User, X } from 'lucide-react';
 import { RootState } from '../../store/store';
 import { logout } from '../../store/slices/authSlice';
+import NotificationDropdown from '../notifications/NotificationDropdown';
 
 interface NavItem {
   path: string;
@@ -190,6 +191,7 @@ const Navbar: React.FC = () => {
         <div className="hidden items-center gap-3 md:flex">
           {isAuthenticated ? (
             <>
+              <NotificationDropdown />
               <div className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white">
                 <User className="h-4 w-4 text-cyan-100" />
                 <span className="max-w-[120px] truncate">{user?.name ?? 'Account'}</span>

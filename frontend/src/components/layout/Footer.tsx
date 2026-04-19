@@ -7,7 +7,7 @@ const Footer: React.FC = () => {
     <footer className="relative overflow-hidden border-t border-white/10 bg-[#03070f] text-slate-200">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.18),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.16),transparent_40%)]" />
 
-      <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-10 px-4 py-14 sm:px-6 lg:px-8">
         <div>
           <div className="inline-flex items-center gap-3">
             <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-cyan-100">
@@ -34,24 +34,6 @@ const Footer: React.FC = () => {
               <Phone className="h-4 w-4 text-cyan-200" />
               +91 XXXXX XXXXX
             </a>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Links</h3>
-          <div className="mt-4 grid gap-2 text-sm">
-            <Link to="/" className="rounded-lg px-2 py-1.5 transition hover:bg-white/10 hover:text-white">
-              Home
-            </Link>
-            <Link to="/rides" className="rounded-lg px-2 py-1.5 transition hover:bg-white/10 hover:text-white">
-              Find Ride
-            </Link>
-            <Link to="/car-rental" className="rounded-lg px-2 py-1.5 transition hover:bg-white/10 hover:text-white">
-              Rent Car
-            </Link>
-            <Link to="/driver-services" className="rounded-lg px-2 py-1.5 transition hover:bg-white/10 hover:text-white">
-              Hire Driver
-            </Link>
           </div>
         </div>
       </div>

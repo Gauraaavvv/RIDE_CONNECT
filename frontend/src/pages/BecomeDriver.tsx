@@ -158,7 +158,7 @@ const BecomeDriver: React.FC = () => {
           transition={{ duration: 0.8 }}
         >
           <div className="flex justify-center mb-4">
-            <div className="bg-gradient-to-br from-blue-500 to-cyan-400 p-4 rounded-full">
+            <div className="bg-gradient-to-br from-cyan-500 to-emerald-500 p-4 rounded-full">
               <Car className="w-12 h-12 text-white" />
             </div>
           </div>
@@ -202,7 +202,7 @@ const BecomeDriver: React.FC = () => {
               transition={{ delay: 0.3 + index * 0.1, duration: 0.8 }}
             >
               <div className="flex justify-center mb-4">
-                <div className="bg-gradient-to-br from-blue-500 to-cyan-400 p-3 rounded-full">
+                <div className="bg-gradient-to-br from-cyan-500 to-emerald-500 p-3 rounded-full">
                   <benefit.icon className="w-6 h-6 text-white" />
                 </div>
               </div>
@@ -366,7 +366,7 @@ const BecomeDriver: React.FC = () => {
                     key={option.value}
                     className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
                       formData.availability === option.value
-                        ? 'border-blue-500 bg-blue-500/20'
+                        ? 'border-cyan-500 bg-cyan-500/20'
                         : 'border-white/20 hover:border-white/40'
                     }`}
                     onClick={() => updateFormData('availability', option.value)}
@@ -375,7 +375,7 @@ const BecomeDriver: React.FC = () => {
                       <div
                         className={`w-4 h-4 rounded-full border-2 mr-3 ${
                           formData.availability === option.value
-                            ? 'border-blue-500 bg-blue-500'
+                            ? 'border-cyan-500 bg-cyan-500'
                             : 'border-white/40'
                         }`}
                       >
@@ -400,7 +400,7 @@ const BecomeDriver: React.FC = () => {
                 disabled={isSubmitting}
                 whileHover={{ scale: isSubmitting ? 1 : 1.02 }}
                 whileTap={{ scale: isSubmitting ? 1 : 0.98 }}
-                className="bg-gradient-to-r from-blue-500 to-cyan-400 text-white px-8 py-4 rounded-full font-semibold text-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-cyan-500 to-emerald-500 text-white px-8 py-4 rounded-2xl font-semibold text-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <>

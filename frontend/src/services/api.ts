@@ -15,6 +15,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 const NETWORK_TOAST_KEY = 'rideconnect-network-error-toast';

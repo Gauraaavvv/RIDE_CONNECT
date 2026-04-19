@@ -25,12 +25,14 @@ const isCorsOriginAllowed = (origin) => {
   if (!origin) {
     return true;
   }
-  if (process.env.NODE_ENV !== 'production') {
-    return ['http://localhost:3000', 'http://127.0.0.1:3000'].includes(origin);
-  }
   const staticOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'https://assamrideconnect.com',
     'https://www.assamrideconnect.com',
+    'https://client-cyan-rho-21.vercel.app',
     ...extraCorsOrigins,
   ];
   if (staticOrigins.includes(origin)) {
@@ -39,25 +41,25 @@ const isCorsOriginAllowed = (origin) => {
   return /^https:\/\/[\w.-]+\.vercel\.app$/.test(origin);
 };
 
-const corsOriginCallback = (origin, callback) => {
-  if (isCorsOriginAllowed(origin)) {
-    callback(null, true);
-  } else {
-    console.log("Blocked origin:", origin);
-    callback(null, true);
-  }
-};
-
 const corsOptions = {
-  origin: corsOriginCallback,
+  origin: function (origin, callback) {
+    if (isCorsOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      console.log("Blocked origin:", origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 };
+
+app.use(cors(corsOptions));
 
 const io = new Server(server, {
   cors: {
-    origin: corsOriginCallback,
+    origin: corsOptions.origin,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -107,12 +109,7 @@ app.use(compression());
 // Logging middleware
 app.use(morgan('combined'));
 
-// CORS (must include Vercel frontends — see corsAllowedOrigins)
-//app.use(cors(corsOptions));
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// CORS is now configured at the top of the middleware stack
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

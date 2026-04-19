@@ -11,6 +11,7 @@ import { rideAPI, bookingAPI, driverAPI, requestAPI } from '../services/api';
 import { RootState } from '../store/store';
 import { showOutgoingCall } from '../store/slices/callSlice';
 import PageShell from '../components/layout/PageShell';
+import Chat from '../components/chat/Chat';
 
 interface Driver {
   _id: string;
@@ -41,6 +42,8 @@ const DriverServices: React.FC = () => {
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedVehicleTypes, setSelectedVehicleTypes] = useState<string[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [selectedDriverForChat, setSelectedDriverForChat] = useState<Driver | null>(null);
 
   const handleHireDriver = async (driver: Driver) => {
     if (!isAuthenticated) {
@@ -86,12 +89,38 @@ const DriverServices: React.FC = () => {
   };
 
   const handleMessageDriver = (driver: Driver) => {
-    dispatch(addNotification({
-      type: 'info',
-      title: 'Message Sent!',
-      message: `Message sent to ${driver.name}. They will reply soon!`,
-      duration: 5000
-    }));
+    if (!isAuthenticated || !user?.id) {
+      dispatch(
+        addNotification({
+          type: 'info',
+          title: 'Login Required',
+          message: 'Please login to message this driver',
+          duration: 3000,
+        })
+      );
+      return;
+    }
+    const driverUserId = driver.userId ? String(driver.userId) : '';
+    if (!driverUserId) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Chat unavailable',
+        message: 'Could not determine the driver owner. Please refresh and try again.',
+        duration: 4000
+      }));
+      return;
+    }
+    if (driverUserId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
+    setSelectedDriverForChat(driver);
+    setChatOpen(true);
   };
 
   const handleCallDriver = (driver: Driver) => {
@@ -549,6 +578,19 @@ const DriverServices: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Chat Component */}
+      {chatOpen && selectedDriverForChat && user && (
+        <Chat
+          receiverId={selectedDriverForChat.userId ? String(selectedDriverForChat.userId) : ''}
+          receiverName={selectedDriverForChat.name}
+          receiverAvatar={undefined}
+          entityId={selectedDriverForChat._id}
+          entityType="driver"
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </PageShell>
   );
 };

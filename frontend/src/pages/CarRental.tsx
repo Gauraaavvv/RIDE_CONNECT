@@ -11,6 +11,7 @@ import { rideAPI, bookingAPI, carAPI, requestAPI } from '../services/api';
 import { RootState } from '../store/store';
 import { showOutgoingCall } from '../store/slices/callSlice';
 import PageShell from '../components/layout/PageShell';
+import Chat from '../components/chat/Chat';
 
 interface CarListing {
   _id: string;
@@ -45,6 +46,8 @@ const CarRental: React.FC = () => {
   const [carListings, setCarListings] = useState<CarListing[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
+  const [chatOpen, setChatOpen] = useState(false);
+  const [selectedCarForChat, setSelectedCarForChat] = useState<CarListing | null>(null);
 
   const toggleFeatures = (carId: string) => {
     const newExpanded = new Set(expandedFeatures);
@@ -101,12 +104,38 @@ const CarRental: React.FC = () => {
   };
 
   const handleMessageOwner = (car: CarListing) => {
-    dispatch(addNotification({
-      type: 'info',
-      title: 'Message Sent!',
-      message: `Message sent to ${car.ownerName} about the car. They will reply soon!`,
-      duration: 5000,
-    }))
+    if (!isAuthenticated || !user?.id) {
+      dispatch(
+        addNotification({
+          type: 'info',
+          title: 'Login Required',
+          message: 'Please login to message the owner',
+          duration: 3000,
+        })
+      );
+      return;
+    }
+    const ownerUserId = car.userId ? String(car.userId) : '';
+    if (!ownerUserId) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Chat unavailable',
+        message: 'Could not determine the car owner. Please refresh and try again.',
+        duration: 4000
+      }));
+      return;
+    }
+    if (ownerUserId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
+    setSelectedCarForChat(car);
+    setChatOpen(true);
   };
 
   const handleDeleteCar = async (car: CarListing) => {
@@ -614,6 +643,19 @@ const CarRental: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Chat Component */}
+      {chatOpen && selectedCarForChat && user && (
+        <Chat
+          receiverId={selectedCarForChat.userId ? String(selectedCarForChat.userId) : ''}
+          receiverName={selectedCarForChat.ownerName}
+          receiverAvatar={undefined}
+          entityId={selectedCarForChat._id}
+          entityType="car"
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </PageShell>
   );
 };

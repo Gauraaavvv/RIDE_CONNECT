@@ -48,6 +48,7 @@ const CarRental: React.FC = () => {
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string>>(new Set());
   const [chatOpen, setChatOpen] = useState(false);
   const [selectedCarForChat, setSelectedCarForChat] = useState<CarListing | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
 
   const toggleFeatures = (carId: string) => {
     const newExpanded = new Set(expandedFeatures);
@@ -91,6 +92,7 @@ const CarRental: React.FC = () => {
           duration: 5000,
         })
       );
+      setPendingRequests(prev => new Set(prev).add(car._id));
     } catch (error: any) {
       dispatch(
         addNotification({
@@ -214,6 +216,13 @@ const CarRental: React.FC = () => {
         if (!cancelled) {
           setCarListings(carsData || []);
         }
+        
+        if (isAuthenticated) {
+          const reqs = await requestAPI.list({ type: 'car', status: 'pending', sent: 'true' });
+          if (!cancelled) {
+            setPendingRequests(new Set(reqs.map((r: any) => String(r.entityId))));
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch cars:', error);
         if (!cancelled) {
@@ -228,7 +237,7 @@ const CarRental: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const features = [
     'AC', 'GPS', 'Bluetooth', 'Backup Camera', 'Power Steering',
@@ -574,12 +583,12 @@ const CarRental: React.FC = () => {
                     <div className="flex space-x-3">
                       <motion.button
                         onClick={() => handleRentNow(car)}
-                        disabled={!car.isAvailable}
+                        disabled={!car.isAvailable || pendingRequests.has(car._id)}
                         className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                        whileHover={car.isAvailable ? { scale: 1.03 } : {}}
-                        whileTap={car.isAvailable ? { scale: 0.97 } : {}}
+                        whileHover={car.isAvailable && !pendingRequests.has(car._id) ? { scale: 1.03 } : {}}
+                        whileTap={car.isAvailable && !pendingRequests.has(car._id) ? { scale: 0.97 } : {}}
                       >
-                        Rent Now
+                        {pendingRequests.has(car._id) ? 'Requested' : 'Rent Now'}
                       </motion.button>
                       {isAuthenticated && user && car.userId === user.id && (
                         <motion.button

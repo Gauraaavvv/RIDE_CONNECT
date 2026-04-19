@@ -35,13 +35,17 @@ const attachMessagingSocket = (io) => {
           return;
         }
 
-        let resolvedReceiverId = '';
-        try {
-          const resolved = await resolveReceiverId({ entityType, entityId });
-          resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
-        } catch (e) {
-          socket.emit('error', { message: e.message || 'Failed to resolve receiver' });
-          return;
+        let resolvedReceiverId = normalizeId(bodyReceiverId);
+        if (entityType && entityId) {
+          try {
+            const resolved = await resolveReceiverId({ entityType, entityId });
+            const ownerId = resolved?.receiverId ? normalizeId(resolved.receiverId) : null;
+            if (ownerId && normalizeId(senderId) !== ownerId) {
+              resolvedReceiverId = ownerId;
+            }
+          } catch (e) {
+            console.error('[SOCKET MESSAGE] resolveReceiverId error:', e);
+          }
         }
 
         if (!resolvedReceiverId) {
@@ -160,13 +164,17 @@ const attachCallingSocket = (io) => {
       }
 
       (async () => {
-        let resolvedReceiverId = '';
-        try {
-          const resolved = await resolveReceiverId({ entityType, entityId });
-          resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
-        } catch (e) {
-          socket.emit('error', { message: e.message || 'Failed to resolve receiver' });
-          return;
+        let resolvedReceiverId = normalizeId(bodyReceiverId);
+        if (entityType && entityId) {
+          try {
+            const resolved = await resolveReceiverId({ entityType, entityId });
+            const ownerId = resolved?.receiverId ? normalizeId(resolved.receiverId) : null;
+            if (ownerId && normalizeId(callerId) !== ownerId) {
+              resolvedReceiverId = ownerId;
+            }
+          } catch (e) {
+            console.error('[SOCKET CALL] resolveReceiverId error:', e);
+          }
         }
 
         if (!resolvedReceiverId) {

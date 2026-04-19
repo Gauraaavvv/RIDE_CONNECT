@@ -375,7 +375,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
     res.status(200).json({
       status: 'success',
       message: 'Booking accepted successfully',
-      data: { booking: await booking.populate(['ride', 'driver', 'passenger']) }
+      data: { booking: await booking.populate('ride driver passenger') }
     });
   } catch (error) {
     console.error('Accept booking error:', error);
@@ -466,7 +466,7 @@ router.patch('/:id/reject', auth, async (req, res) => {
     res.status(200).json({
       status: 'success',
       message: 'Booking rejected successfully',
-      data: { booking: await booking.populate(['ride', 'driver', 'passenger']) }
+      data: { booking: await booking.populate('ride driver passenger') }
     });
   } catch (error) {
     console.error('Reject booking error:', error);

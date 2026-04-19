@@ -44,6 +44,7 @@ const DriverServices: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [selectedDriverForChat, setSelectedDriverForChat] = useState<Driver | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
 
   const handleHireDriver = async (driver: Driver) => {
     if (!isAuthenticated) {
@@ -74,6 +75,7 @@ const DriverServices: React.FC = () => {
           duration: 5000,
         })
       );
+      setPendingRequests(prev => new Set(prev).add(driver._id));
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
       const msg = err.response?.data?.message || 'Could not send hire request. Try again.';
@@ -181,6 +183,13 @@ const DriverServices: React.FC = () => {
         if (!cancelled) {
           setDrivers(driversData || []);
         }
+        
+        if (isAuthenticated) {
+          const reqs = await requestAPI.list({ type: 'driver', status: 'pending', sent: 'true' });
+          if (!cancelled) {
+            setPendingRequests(new Set(reqs.map((r: any) => String(r.entityId))));
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch drivers:', error);
         if (!cancelled) {
@@ -195,7 +204,7 @@ const DriverServices: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const languages = ['English', 'Hindi', 'Assamese', 'Bengali', 'Gujarati'];
   const vehicleTypes = ['Sedan', 'SUV', 'Hatchback', 'Luxury', 'Commercial'];
@@ -509,12 +518,12 @@ const DriverServices: React.FC = () => {
                         <div className="flex space-x-3">
                           <motion.button
                             onClick={() => handleHireDriver(driver)}
-                            disabled={!driver.isAvailable}
+                            disabled={!driver.isAvailable || pendingRequests.has(driver._id)}
                             className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                            whileHover={driver.isAvailable ? { scale: 1.03 } : {}}
-                            whileTap={driver.isAvailable ? { scale: 0.97 } : {}}
+                            whileHover={driver.isAvailable && !pendingRequests.has(driver._id) ? { scale: 1.03 } : {}}
+                            whileTap={driver.isAvailable && !pendingRequests.has(driver._id) ? { scale: 0.97 } : {}}
                           >
-                            Hire Driver
+                            {pendingRequests.has(driver._id) ? 'Requested' : 'Hire Driver'}
                           </motion.button>
                           <motion.button 
                             onClick={() => handleMessageDriver(driver)}

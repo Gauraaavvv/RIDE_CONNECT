@@ -404,7 +404,10 @@ const Profile: React.FC = () => {
           }
         }
 
-        const recentRides: RecentRide[] = bookings.slice(0, 12).map((b: Record<string, unknown>) => {
+        const recentRides: RecentRide[] = bookings
+          .filter((b: Record<string, unknown>) => String(b.status) !== 'pending')
+          .slice(0, 12)
+          .map((b: Record<string, unknown>) => {
           const ride = b.ride as Record<string, unknown> | undefined;
           const driverId = b.driver && typeof b.driver === 'object' && b.driver !== null && '_id' in b.driver
             ? String((b.driver as { _id: string })._id)

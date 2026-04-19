@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { notificationAPI } from '../../services/api';
 import { useDispatch, useSelector } from 'react-redux';
 import { getSocket } from '../../services/socket';
@@ -10,6 +11,7 @@ import { markReadLocal, prepend, setAll, setLoading, setUnreadCount } from '../.
 const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const NotificationDropdown: React.FC = () => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dispatch = useDispatch();
@@ -212,7 +214,13 @@ const NotificationDropdown: React.FC = () => {
                     key={notification._id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    onClick={() => !notification.isRead && handleMarkAsRead(notification._id)}
+                    onClick={() => {
+                      if (!notification.isRead) handleMarkAsRead(notification._id);
+                      setIsOpen(false);
+                      if (notification.type.includes('booking') || notification.type.includes('request')) {
+                        navigate('/profile');
+                      }
+                    }}
                     className={`p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors ${
                       !notification.isRead ? 'bg-indigo-50' : ''
                     }`}

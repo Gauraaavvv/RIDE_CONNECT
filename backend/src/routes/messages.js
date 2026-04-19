@@ -35,17 +35,17 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
       });
     }
 
-    let resolvedReceiverId = '';
-    try {
-      const resolved = await resolveReceiverId({ entityType, entityId });
-      resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
-    } catch (e) {
-      const statusCode = e.statusCode || 400;
-      return res.status(statusCode).json({
-        success: false,
-        status: 'error',
-        message: e.message || 'Failed to resolve receiver'
-      });
+    let resolvedReceiverId = normalizeId(bodyReceiverId);
+    if (entityType && entityId) {
+      try {
+        const resolved = await resolveReceiverId({ entityType, entityId });
+        const ownerId = resolved?.receiverId ? normalizeId(resolved.receiverId) : null;
+        if (ownerId && normalizeId(req.user.id) !== ownerId) {
+          resolvedReceiverId = ownerId;
+        }
+      } catch (e) {
+        console.error('[MESSAGE SEND] resolveReceiverId error:', e);
+      }
     }
 
     if (!resolvedReceiverId) {

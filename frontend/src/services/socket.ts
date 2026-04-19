@@ -1,13 +1,5 @@
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store/store';
-import { addNotification } from '../store/slices/notificationSlice';
-
-interface NotificationData {
-  type?: 'error' | 'info' | 'success' | 'warning';
-  title?: string;
-  message: string;
-  duration?: number;
-}
 
 interface MessageData {
   id: string;
@@ -45,7 +37,8 @@ export const initializeSocket = () => {
     return null;
   }
 
-  if (socket?.connected) {
+  // Guarantee a single socket instance for the whole app lifecycle.
+  if (socket) {
     return socket;
   }
 
@@ -77,67 +70,14 @@ export const initializeSocket = () => {
     }
   });
 
-  socket.on('notification', (notification: NotificationData) => {
-    store.dispatch(addNotification({
-      type: notification.type || 'info',
-      title: notification.title || 'Notification',
-      message: notification.message,
-      duration: notification.duration || 5000
-    }));
-  });
-
   socket.on('chat-message', (message: MessageData) => {
     // Handle chat messages
     console.log('New chat message:', message);
   });
 
-  socket.on('receive_message', (message: any) => {
-    const senderName = message?.senderId?.name || 'Someone';
-    store.dispatch(addNotification({
-      type: 'info',
-      title: 'New Message',
-      message: `${senderName} sent you a message`,
-      duration: 5000
-    }));
-  });
-
-  socket.on('booking:new_request', (data: any) => {
-    store.dispatch(addNotification({
-      type: 'info',
-      title: 'New Booking Request',
-      message: `New booking request from ${data?.passenger || 'a passenger'}`,
-      duration: 5000
-    }));
-  });
-
-  socket.on('booking:status_update', (data: any) => {
-    store.dispatch(addNotification({
-      type: data?.status === 'confirmed' ? 'success' : 'warning',
-      title: data?.status === 'confirmed' ? 'Booking Accepted' : 'Booking Update',
-      message: data?.message || 'Booking status updated',
-      duration: 5000
-    }));
-  });
-
-  socket.on('incoming_call', (data: any) => {
-    const callerName = data?.callerName || 'Someone';
-    store.dispatch(addNotification({
-      type: 'info',
-      title: 'Incoming Call',
-      message: `${callerName} is calling you`,
-      duration: 7000
-    }));
-  });
-
   socket.on('ride-update', (update: RideUpdateData) => {
     // Handle ride updates
     console.log('Ride update:', update);
-    store.dispatch(addNotification({
-      type: 'info',
-      title: 'Ride Update',
-      message: update.message,
-      duration: 5000
-    }));
   });
 
   return socket;

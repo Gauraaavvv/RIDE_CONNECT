@@ -286,17 +286,22 @@ export const messageAPI = {
 export const notificationAPI = {
   list: async (params?: { limit?: number; skip?: number; unreadOnly?: boolean }) => {
     const response = await api.get('/notifications', { params });
-    return response.data.data?.notifications || response.data.notifications || response.data;
+    const notifications = response.data.data?.notifications || response.data.notifications || [];
+    const unreadCount = response.data.data?.unreadCount ?? response.data.unreadCount ?? 0;
+    return { notifications, unreadCount };
   },
 
   markAsRead: async (notificationIds?: string[]) => {
     const response = await api.patch('/notifications/mark-read', { notificationIds });
-    return response.data.data?.unreadCount || response.data.unreadCount || response.data;
+    const unreadCount = response.data.data?.unreadCount ?? response.data.unreadCount ?? 0;
+    return { unreadCount };
   },
 
   markSingleAsRead: async (id: string) => {
     const response = await api.patch(`/notifications/${id}/read`);
-    return response.data.data?.notification || response.data.notification || response.data;
+    const notification = response.data.data?.notification || response.data.notification || null;
+    const unreadCount = response.data.data?.unreadCount ?? response.data.unreadCount ?? 0;
+    return { notification, unreadCount };
   },
 
   deleteAll: async () => {

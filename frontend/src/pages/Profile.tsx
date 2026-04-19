@@ -251,6 +251,7 @@ const Profile: React.FC = () => {
           duration: 3000,
         })
       );
+      await refreshPendingBookings();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Could not accept booking. Try again.';
       dispatch(
@@ -302,6 +303,7 @@ const Profile: React.FC = () => {
           duration: 3000,
         })
       );
+      await refreshPendingBookings();
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || 'Could not reject booking. Try again.';
       dispatch(

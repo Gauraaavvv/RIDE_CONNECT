@@ -9,6 +9,7 @@ import {
 import { addNotification } from '../store/slices/notificationSlice';
 import { rideAPI, bookingAPI, carAPI, requestAPI } from '../services/api';
 import { RootState } from '../store/store';
+import { showOutgoingCall } from '../store/slices/callSlice';
 import PageShell from '../components/layout/PageShell';
 
 interface CarListing {
@@ -136,11 +137,42 @@ const CarRental: React.FC = () => {
   };
 
   const handleCallOwner = (car: CarListing) => {
-    dispatch(addNotification({
-      type: 'info',
-      title: 'Call Initiated!',
-      message: `Calling ${car.ownerName} about ${car.carModel}. Please wait...`,
-      duration: 3000
+    if (!isAuthenticated || !user?.id) {
+      dispatch(
+        addNotification({
+          type: 'info',
+          title: 'Login Required',
+          message: 'Please login to call the owner',
+          duration: 3000,
+        })
+      );
+      return;
+    }
+    const ownerUserId = car.userId ? String(car.userId) : '';
+    if (!ownerUserId) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Call unavailable',
+        message: 'Could not determine the car owner. Please refresh and try again.',
+        duration: 4000
+      }));
+      return;
+    }
+    if (ownerUserId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
+    dispatch(showOutgoingCall({
+      peerUserId: ownerUserId,
+      peerName: car.ownerName,
+      callType: 'audio',
+      entityType: 'car',
+      entityId: car._id
     }));
   };
 

@@ -6,6 +6,9 @@ import { ArrowRight, Car, LogOut, Menu, ShieldCheck, User, X } from 'lucide-reac
 import { RootState } from '../../store/store';
 import { logout } from '../../store/slices/authSlice';
 import NotificationDropdown from '../notifications/NotificationDropdown';
+import { disconnectSocket } from '../../services/socket';
+import { clear as clearInbox } from '../../store/slices/inboxSlice';
+import { closeCall } from '../../store/slices/callSlice';
 
 interface NavItem {
   path: string;
@@ -68,7 +71,11 @@ const Navbar: React.FC = () => {
   );
 
   const handleLogout = () => {
+    localStorage.removeItem('token');
     dispatch(logout());
+    dispatch(clearInbox());
+    dispatch(closeCall());
+    disconnectSocket();
     navigate('/');
   };
 

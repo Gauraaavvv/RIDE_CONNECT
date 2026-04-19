@@ -134,24 +134,21 @@ const Chat: React.FC<ChatProps> = ({
         (sender === receiverId && receiver === user.id) ||
         (sender === user.id && receiver === receiverId)
       ) {
-        setMessages((prev) => [...prev, message]);
-      }
-    };
-
-    const onMessageSent = (message: Message) => {
-      const sender = getId(message.senderId);
-      const receiver = getId(message.receiverId);
-      if (sender === user.id && receiver === receiverId) {
-        setMessages((prev) => [...prev, message]);
+        setMessages((prev) => {
+          if (prev.some((m) => m._id === message._id)) {
+            return prev;
+          }
+          return [...prev, message].sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+        });
       }
     };
 
     socketInstance.on('receive_message', onReceiveMessage);
-    socketInstance.on('message_sent', onMessageSent);
 
     return () => {
       socketInstance.off('receive_message', onReceiveMessage);
-      socketInstance.off('message_sent', onMessageSent);
     };
   }, [isOpen, receiverId, user?.id, dispatch]);
 
@@ -168,23 +165,44 @@ const Chat: React.FC<ChatProps> = ({
       return;
     }
 
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     try {
-      const socketInstance = socketRef.current || getSocket();
-      if (!socketInstance) {
-        throw new Error('Socket not connected');
-      }
-
-      socketInstance.emit('send_message', {
+      const optimisticMessage: Message = {
+        _id: optimisticId,
+        senderId: user.id,
         receiverId,
         text: newMessage.trim(),
+        isRead: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, optimisticMessage]);
+      setNewMessage('');
+
+      // Persist via API (backend emits to receiver via socket)
+      const saved = await messageAPI.send({
+        receiverId,
+        text: optimisticMessage.text,
         entityId,
         entityType,
-        senderName: user.name
       });
 
-      setNewMessage('');
+      setMessages((prev) =>
+        prev
+          .map((m) => (m._id === optimisticId ? saved : m))
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      );
     } catch (error) {
       console.error('Failed to send message:', error);
+      setMessages((prev) => prev.filter((m) => m._id !== optimisticId));
+      dispatch(
+        addNotification({
+          type: 'error',
+          title: 'Send failed',
+          message: 'Could not send message. Please try again.',
+          duration: 4000,
+        })
+      );
     }
   };
 

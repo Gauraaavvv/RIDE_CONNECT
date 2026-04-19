@@ -9,6 +9,7 @@ import {
 import { addNotification } from '../store/slices/notificationSlice';
 import { RootState } from '../store/store';
 import { rideAPI, bookingAPI } from '../services/api';
+import { showOutgoingCall } from '../store/slices/callSlice';
 import PageShell from '../components/layout/PageShell';
 import Chat from '../components/chat/Chat';
 
@@ -111,11 +112,39 @@ const RideList: React.FC = () => {
   };
 
   const handleCallDriver = (ride: Ride) => {
-    dispatch(addNotification({
-      type: 'info',
-      title: 'Call Initiated!',
-      message: `Calling ${ride.driverName}. Please wait...`,
-      duration: 5000
+    if (!isAuthenticated || !user?.id) {
+      dispatch(addNotification({
+        type: 'info',
+        title: 'Login Required',
+        message: 'Please login to call the driver',
+        duration: 3000
+      }));
+      return;
+    }
+    if (!ride.driverId) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Call unavailable',
+        message: 'Could not determine the ride owner. Please refresh and try again.',
+        duration: 4000
+      }));
+      return;
+    }
+    if (ride.driverId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
+    dispatch(showOutgoingCall({
+      peerUserId: ride.driverId,
+      peerName: ride.driverName,
+      callType: 'audio',
+      entityType: 'ride',
+      entityId: ride.id
     }));
   };
 

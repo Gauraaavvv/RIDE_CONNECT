@@ -9,6 +9,7 @@ import { initializeSocket, disconnectSocket } from './services/socket';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import Toast from './components/ui/Toast';
+import CallManager from './components/call/CallManager';
 import AppPreloader from './components/ui/AppPreloader';
 import LandingPage from './pages/LandingPage';
 import Home from './pages/Home';
@@ -71,6 +72,7 @@ const AppContent: React.FC = () => {
     <div className="flex min-h-screen flex-col bg-[#03070f]">
       <Navbar />
       <Toast />
+      <CallManager />
 
       <AnimatePresence>{showPreloader && <AppPreloader />}</AnimatePresence>
 

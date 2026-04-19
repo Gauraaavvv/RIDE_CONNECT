@@ -1,33 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 import { notificationAPI } from '../../services/api';
-import { useDispatch } from 'react-redux';
-import { addNotification } from '../../store/slices/notificationSlice';
+import { useDispatch, useSelector } from 'react-redux';
 import { getSocket } from '../../services/socket';
+import type { RootState } from '../../store/store';
+import { markReadLocal, prepend, setAll, setLoading, setUnreadCount } from '../../store/slices/inboxSlice';
 
-interface NotificationItem {
-  _id: string;
-  type: string;
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-  metadata?: any;
-}
+const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
 const NotificationDropdown: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dispatch = useDispatch();
+  const { items: notifications, unreadCount, loading } = useSelector((state: RootState) => state.inbox);
+  const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     loadNotifications();
     const cleanup = setupSocketNotifications();
     return () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
       if (typeof cleanup === 'function') cleanup();
     };
   }, []);
@@ -45,106 +40,100 @@ const NotificationDropdown: React.FC = () => {
 
   const loadNotifications = async () => {
     try {
-      setLoading(true);
-      const data = await notificationAPI.list({ limit: 10, unreadOnly: false });
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unreadCount || 0);
+      dispatch(setLoading(true));
+      const data = await notificationAPI.list({ limit: 20, unreadOnly: false });
+      dispatch(setAll({ notifications: data.notifications || [], unreadCount: data.unreadCount || 0 }));
     } catch (error) {
       console.error('Failed to load notifications:', error);
+      dispatch(setLoading(false));
     } finally {
-      setLoading(false);
     }
+  };
+
+  const scheduleRefresh = () => {
+    if (refreshTimerRef.current) {
+      window.clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
+      loadNotifications();
+    }, 500);
   };
 
   const setupSocketNotifications = () => {
     const socket = getSocket();
     if (!socket) return;
 
-    const onNewBooking = (data: any) => {
-      setNotifications((prev) => [
-        {
-          _id: Date.now().toString(),
-          type: 'new_booking_request',
-          title: 'New Booking Request',
-          message: `New booking request from ${data?.passenger || 'a passenger'}`,
+    const onNewNotification = (data: any) => {
+      // If backend ever emits full Notification docs:
+      if (data && data._id) {
+        dispatch(prepend(data));
+      } else {
+        dispatch(prepend({
+          _id: makeLocalId(),
+          type: 'notification',
+          title: data?.title || 'Notification',
+          message: data?.message || 'You have a new notification',
           isRead: false,
           createdAt: new Date().toISOString(),
           metadata: data
-        },
-        ...prev
-      ]);
-      setUnreadCount((prev) => prev + 1);
+        }));
+      }
+      scheduleRefresh();
+    };
 
-      dispatch(
-        addNotification({
-          type: 'success',
-          title: 'New Booking Request',
-          message: `You have a new booking request`,
-          duration: 5000
-        })
-      );
+    const onNewBooking = (data: any) => {
+      dispatch(prepend({
+        _id: data?.bookingId ? `booking-${data.bookingId}` : makeLocalId(),
+        type: 'new_booking_request',
+        title: 'New Booking Request',
+        message: `New booking request from ${data?.passenger || 'a passenger'}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        metadata: data
+      }));
     };
 
     const onBookingStatus = (data: any) => {
       const title = data?.status === 'confirmed' ? 'Booking Accepted' : 'Booking Rejected';
-      setNotifications((prev) => [
-        {
-          _id: Date.now().toString(),
-          type: data?.status === 'confirmed' ? 'booking_accepted' : 'booking_rejected',
-          title,
-          message: data?.message || 'Booking status updated',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-          metadata: data
-        },
-        ...prev
-      ]);
-      setUnreadCount((prev) => prev + 1);
-
-      dispatch(
-        addNotification({
-          type: data?.status === 'confirmed' ? 'success' : 'error',
-          title,
-          message: data?.message || 'Booking status updated',
-          duration: 5000
-        })
-      );
+      dispatch(prepend({
+        _id: data?.bookingId ? `booking-status-${data.bookingId}-${data?.status || 'update'}` : makeLocalId(),
+        type: data?.status === 'confirmed' ? 'booking_accepted' : 'booking_rejected',
+        title,
+        message: data?.message || 'Booking status updated',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        metadata: data
+      }));
     };
 
     const onNewMessage = (data: any) => {
       const senderName = data?.senderId?.name || 'Someone';
-      setNotifications((prev) => [
-        {
-          _id: Date.now().toString(),
-          type: 'new_message',
-          title: 'New Message',
-          message: `${senderName} sent you a message`,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-          metadata: data
-        },
-        ...prev
-      ]);
-      setUnreadCount((prev) => prev + 1);
+      dispatch(prepend({
+        _id: data?._id ? `msg-${data._id}` : makeLocalId(),
+        type: 'new_message',
+        title: 'New Message',
+        message: `${senderName} sent you a message`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        metadata: data
+      }));
+      scheduleRefresh();
     };
 
     const onIncomingCall = (data: any) => {
       const callerName = data?.callerName || 'Someone';
-      setNotifications((prev) => [
-        {
-          _id: Date.now().toString(),
-          type: 'incoming_call',
-          title: 'Incoming Call',
-          message: `${callerName} is calling you`,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-          metadata: data
-        },
-        ...prev
-      ]);
-      setUnreadCount((prev) => prev + 1);
+      dispatch(prepend({
+        _id: data?.callerId ? `call-${data.callerId}-${Date.now()}` : makeLocalId(),
+        type: 'incoming_call',
+        title: 'Incoming Call',
+        message: `${callerName} is calling you`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        metadata: data
+      }));
     };
 
+    socket.on('new_notification', onNewNotification);
     socket.on('booking:new_request', onNewBooking);
     socket.on('booking:status_update', onBookingStatus);
     // Server emits both; support either event name.
@@ -153,6 +142,7 @@ const NotificationDropdown: React.FC = () => {
     socket.on('incoming_call', onIncomingCall);
 
     return () => {
+      socket.off('new_notification', onNewNotification);
       socket.off('booking:new_request', onNewBooking);
       socket.off('booking:status_update', onBookingStatus);
       socket.off('new_message', onNewMessage);
@@ -163,11 +153,13 @@ const NotificationDropdown: React.FC = () => {
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      await notificationAPI.markSingleAsRead(notificationId);
-      setNotifications((prev) =>
-        prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      if (notificationId.startsWith('local-')) {
+        dispatch(markReadLocal(notificationId));
+        return;
+      }
+      const res = await notificationAPI.markSingleAsRead(notificationId);
+      dispatch(markReadLocal(notificationId));
+      dispatch(setUnreadCount(res.unreadCount ?? 0));
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
@@ -175,9 +167,14 @@ const NotificationDropdown: React.FC = () => {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await notificationAPI.markAsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+      const res = await notificationAPI.markAsRead();
+      // Local fast path: mark everything read; then sync unreadCount from backend
+      notifications.forEach((n) => {
+        if (!n.isRead) {
+          dispatch(markReadLocal(n._id));
+        }
+      });
+      dispatch(setUnreadCount(res.unreadCount ?? 0));
     } catch (error) {
       console.error('Failed to mark all notifications as read:', error);
     }

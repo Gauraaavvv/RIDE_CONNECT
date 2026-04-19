@@ -8,7 +8,18 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['new_booking_request', 'booking_accepted', 'booking_rejected', 'new_message', 'incoming_call', 'call_ended', 'request_accepted', 'request_rejected'],
+    enum: [
+      'booking_created',
+      'new_booking_request',
+      'booking_accepted',
+      'booking_rejected',
+      'new_message',
+      'incoming_call',
+      'call_ended',
+      'new_request',
+      'request_accepted',
+      'request_rejected'
+    ],
     required: true
   },
   title: {

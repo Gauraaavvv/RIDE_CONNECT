@@ -1,12 +1,14 @@
 const attachBookingSocket = (io) => {
   io.on('connection', (socket) => {
     // Mandatory: Join user's personal room on connection
-    socket.on('join', (userId) => {
+    socket.on('join', (userId, callback) => {
       if (!userId) {
+        if (typeof callback === 'function') callback({ status: 'error', message: 'No userId' });
         return;
       }
       const userIdStr = typeof userId === 'string' ? userId : String(userId);
       if (!userIdStr || userIdStr === '[object Object]') {
+        if (typeof callback === 'function') callback({ status: 'error', message: 'Invalid userId' });
         return;
       }
       socket.userId = userIdStr;
@@ -14,6 +16,7 @@ const attachBookingSocket = (io) => {
       socket.data.userId = userIdStr;
       socket.join(userIdStr);
       console.log('[SOCKET JOIN] socket:', socket.id, 'userId:', userIdStr);
+      if (typeof callback === 'function') callback({ status: 'ok' });
     });
 
     // Legacy: join_user (deprecated, kept for compatibility)

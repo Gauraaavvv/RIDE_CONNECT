@@ -197,7 +197,21 @@ const bookingSchema = new mongoose.Schema({
   notifications: [{
     type: {
       type: String,
-      enum: ['booking_confirmed', 'pickup_reminder', 'driver_arrived', 'ride_started', 'ride_completed', 'payment_received', 'cancellation', 'emergency'],
+      // This is an internal per-booking notification log. Keep it permissive for all booking lifecycle events.
+      enum: [
+        'booking_confirmed',
+        'booking_created',
+        'new_booking_request',
+        'booking_accepted',
+        'booking_rejected',
+        'pickup_reminder',
+        'driver_arrived',
+        'ride_started',
+        'ride_completed',
+        'payment_received',
+        'cancellation',
+        'emergency'
+      ],
       required: true
     },
     message: {

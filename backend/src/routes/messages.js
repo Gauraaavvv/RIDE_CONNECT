@@ -86,7 +86,7 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
 
     // Create notification for receiver
     try {
-      await Notification.create({
+      const notification = await Notification.create({
         userId: resolvedReceiverId,
         type: 'new_message',
         title: 'New Message',
@@ -97,6 +97,10 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
           senderName: req.user.name
         }
       });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(normalizeId(resolvedReceiverId)).emit('new_notification', notification);
+      }
     } catch (notifError) {
       console.error('[MESSAGE SEND] Failed to create notification:', notifError);
       // Continue even if notification fails

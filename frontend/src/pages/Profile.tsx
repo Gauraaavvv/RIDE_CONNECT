@@ -10,6 +10,7 @@ import {
 import { addNotification } from '../store/slices/notificationSlice';
 import { RootState } from '../store/store';
 import { userAPI, achievementAPI, bookingAPI } from '../services/api';
+import { getSocket } from '../services/socket';
 import PageShell from '../components/layout/PageShell';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 
@@ -486,8 +487,18 @@ const Profile: React.FC = () => {
       }
     })();
 
+    const socket = getSocket();
+    if (socket) {
+      socket.on('booking:new_request', refreshPendingBookings);
+      socket.on('booking:status_update', refreshPendingBookings);
+    }
+
     return () => {
       cancelled = true;
+      if (socket) {
+        socket.off('booking:new_request', refreshPendingBookings);
+        socket.off('booking:status_update', refreshPendingBookings);
+      }
     };
   }, [isAuthenticated, dispatch]);
 

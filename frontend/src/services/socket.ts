@@ -15,6 +15,7 @@ interface RideUpdateData {
 }
 
 let socket: Socket | null = null;
+let joinedPromise: Promise<void> | null = null;
 
 const resolveSocketUrl = () => {
   const wsUrl = process.env.REACT_APP_WS_URL;
@@ -52,20 +53,27 @@ export const initializeSocket = () => {
     console.log('Connected to server');
     const userId = store.getState().auth.user?.id;
     if (userId) {
-      socket?.emit('join', userId);
-      console.log('[socket] join:', userId);
+      // Avoid emitting if ensureSocketJoined is doing it or already did it.
+      // But actually, on connect we MIGHT need to rejoin if it was a reconnect.
+      // socket.on('connect') fires on initial AND reconnect.
+      // The old joinedPromise is invalid.
+      joinedPromise = null;
+      ensureSocketJoined(userId).catch(console.error);
+      console.log('[socket] connect -> joining:', userId);
     }
   });
 
   socket.on('disconnect', () => {
     console.log('Disconnected from server');
+    joinedPromise = null;
   });
 
-  // Ensure join runs on reconnect as well (connect fires on every successful reconnect)
+  // Ensure join runs on reconnect as well
   socket.on('reconnect', () => {
     const userId = store.getState().auth.user?.id;
     if (userId) {
-      socket?.emit('join', userId);
+      joinedPromise = null;
+      ensureSocketJoined(userId).catch(console.error);
       console.log('[socket] re-join:', userId);
     }
   });
@@ -94,7 +102,45 @@ export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
+    joinedPromise = null;
   }
+};
+
+export const ensureSocketJoined = async (userId: string): Promise<void> => {
+  const currentSocket = getSocket();
+  if (!currentSocket) throw new Error('Socket not initialized');
+
+  if (joinedPromise) {
+    return joinedPromise;
+  }
+
+  joinedPromise = new Promise((resolve, reject) => {
+    const doJoin = () => {
+      currentSocket.emit('join', userId, (res: any) => {
+        if (res && res.status === 'error') {
+          console.error('[socket] join error:', res.message);
+          joinedPromise = null; // allow retry
+          reject(new Error(res.message));
+        } else {
+          resolve();
+        }
+      });
+    };
+
+    if (currentSocket.connected) {
+      doJoin();
+    } else {
+      currentSocket.once('connect', doJoin);
+      setTimeout(() => {
+        if (!currentSocket.connected) {
+          joinedPromise = null;
+          reject(new Error('Socket connection timeout'));
+        }
+      }, 5000);
+    }
+  });
+
+  return joinedPromise;
 };
 
 export const joinRoom = (roomId: string) => {

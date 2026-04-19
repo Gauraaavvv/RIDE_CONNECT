@@ -64,90 +64,38 @@ const NotificationDropdown: React.FC = () => {
     if (!socket) return;
 
     const onNewNotification = (data: any) => {
-      // If backend ever emits full Notification docs:
+      // If backend emits full Notification docs, prepend it.
       if (data && data._id) {
         dispatch(prepend(data));
-      } else {
-        dispatch(prepend({
-          _id: makeLocalId(),
-          type: 'notification',
-          title: data?.title || 'Notification',
-          message: data?.message || 'You have a new notification',
-          isRead: false,
-          createdAt: new Date().toISOString(),
-          metadata: data
-        }));
       }
       scheduleRefresh();
     };
 
-    const onNewBooking = (data: any) => {
-      dispatch(prepend({
-        _id: data?.bookingId ? `booking-${data.bookingId}` : makeLocalId(),
-        type: 'new_booking_request',
-        title: 'New Booking Request',
-        message: `New booking request from ${data?.passenger || 'a passenger'}`,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        metadata: data
-      }));
-    };
-
-    const onBookingStatus = (data: any) => {
-      const title = data?.status === 'confirmed' ? 'Booking Accepted' : 'Booking Rejected';
-      dispatch(prepend({
-        _id: data?.bookingId ? `booking-status-${data.bookingId}-${data?.status || 'update'}` : makeLocalId(),
-        type: data?.status === 'confirmed' ? 'booking_accepted' : 'booking_rejected',
-        title,
-        message: data?.message || 'Booking status updated',
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        metadata: data
-      }));
-    };
-
-    const onNewMessage = (data: any) => {
-      const senderName = data?.senderId?.name || 'Someone';
-      dispatch(prepend({
-        _id: data?._id ? `msg-${data._id}` : makeLocalId(),
-        type: 'new_message',
-        title: 'New Message',
-        message: `${senderName} sent you a message`,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        metadata: data
-      }));
+    // Fallback refresh only (source of truth is `new_notification` + /api/notifications)
+    const onFallbackEvent = () => {
       scheduleRefresh();
     };
 
-    const onIncomingCall = (data: any) => {
-      const callerName = data?.callerName || 'Someone';
-      dispatch(prepend({
-        _id: data?.callerId ? `call-${data.callerId}-${Date.now()}` : makeLocalId(),
-        type: 'incoming_call',
-        title: 'Incoming Call',
-        message: `${callerName} is calling you`,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-        metadata: data
-      }));
-    };
-
     socket.on('new_notification', onNewNotification);
-    socket.on('booking:new_request', onNewBooking);
-    socket.on('booking:status_update', onBookingStatus);
-    // Server emits both; support either event name.
-    socket.on('new_message', onNewMessage);
-    socket.on('receive_message', onNewMessage);
-    socket.on('incoming_call', onIncomingCall);
+    socket.on('booking:new_request', onFallbackEvent);
+    socket.on('booking:status_update', onFallbackEvent);
+    socket.on('new_message', onFallbackEvent);
+    socket.on('receive_message', onFallbackEvent);
+    socket.on('incoming_call', onFallbackEvent);
+    socket.on('new_request', onFallbackEvent);
+    socket.on('request_status_update', onFallbackEvent);
+    socket.on('connect', onFallbackEvent);
 
     return () => {
       socket.off('new_notification', onNewNotification);
-      socket.off('booking:new_request', onNewBooking);
-      socket.off('booking:status_update', onBookingStatus);
-      socket.off('new_message', onNewMessage);
-      socket.off('receive_message', onNewMessage);
-      socket.off('incoming_call', onIncomingCall);
+      socket.off('booking:new_request', onFallbackEvent);
+      socket.off('booking:status_update', onFallbackEvent);
+      socket.off('new_message', onFallbackEvent);
+      socket.off('receive_message', onFallbackEvent);
+      socket.off('incoming_call', onFallbackEvent);
+      socket.off('new_request', onFallbackEvent);
+      socket.off('request_status_update', onFallbackEvent);
+      socket.off('connect', onFallbackEvent);
     };
   };
 
@@ -182,10 +130,15 @@ const NotificationDropdown: React.FC = () => {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
+      case 'booking_created':
       case 'new_booking_request':
       case 'booking_accepted':
       case 'booking_rejected':
         return '🚗';
+      case 'new_request':
+      case 'request_accepted':
+      case 'request_rejected':
+        return '📩';
       case 'new_message':
         return '💬';
       case 'incoming_call':

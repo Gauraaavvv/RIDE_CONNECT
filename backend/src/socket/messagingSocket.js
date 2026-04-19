@@ -5,12 +5,14 @@ const { resolveReceiverId, normalizeId } = require('../utils/resolveReceiverId')
 const attachMessagingSocket = (io) => {
   io.on('connection', (socket) => {
     // User joins their personal room (already handled in bookingSocket.js)
-    socket.on('join', (userId) => {
+    socket.on('join', (userId, callback) => {
       if (!userId) {
+        if (typeof callback === 'function') callback({ status: 'error', message: 'No userId' });
         return;
       }
       const userIdStr = typeof userId === 'string' ? userId : String(userId);
       if (!userIdStr || userIdStr === '[object Object]') {
+        if (typeof callback === 'function') callback({ status: 'error', message: 'Invalid userId' });
         return;
       }
       socket.userId = userIdStr;
@@ -18,6 +20,7 @@ const attachMessagingSocket = (io) => {
       socket.data.userId = userIdStr;
       socket.join(userIdStr);
       console.log('[SOCKET JOIN] socket:', socket.id, 'userId:', userIdStr);
+      if (typeof callback === 'function') callback({ status: 'ok' });
     });
 
     // Send message event
@@ -71,18 +74,22 @@ const attachMessagingSocket = (io) => {
 
         await message.save();
 
-        // Create notification for receiver
-        await Notification.create({
-          userId: resolvedReceiverId,
-          type: 'new_message',
-          title: 'New Message',
-          message: `New message received`,
-          metadata: {
-            messageId: message._id,
-            senderId,
-            senderName: data.senderName || 'Someone'
-          }
-        });
+        try {
+          const notification = await Notification.create({
+            userId: resolvedReceiverId,
+            type: 'new_message',
+            title: 'New Message',
+            message: `New message received`,
+            metadata: {
+              messageId: message._id,
+              senderId,
+              senderName: data.senderName || 'Someone'
+            }
+          });
+          io.to(resolvedReceiverId).emit('new_notification', notification);
+        } catch (notifError) {
+          console.error('[SOCKET MESSAGE] Failed to create global notification:', notifError);
+        }
 
         // Populate and emit to receiver
         const populatedMessage = await Message.findById(message._id)
@@ -175,6 +182,26 @@ const attachCallingSocket = (io) => {
         console.log('[SOCKET CALL] Sender:', callerId);
         console.log('[SOCKET CALL] Receiver:', resolvedReceiverId);
         console.log('[SOCKET CALL] Emitting to room:', resolvedReceiverId);
+
+        // Global notification document for receiver (powers /api/notifications)
+        try {
+          const notification = await Notification.create({
+            userId: resolvedReceiverId,
+            type: 'incoming_call',
+            title: 'Incoming Call',
+            message: `${callerName || 'Someone'} is calling you`,
+            metadata: {
+              callerId,
+              callerName,
+              callType: callType || 'audio',
+              entityId: entityId || null,
+              entityType: entityType || null
+            }
+          });
+          io.to(resolvedReceiverId).emit('new_notification', notification);
+        } catch (notifError) {
+          console.error('[SOCKET CALL] Failed to create global notification:', notifError);
+        }
 
         io.to(resolvedReceiverId).emit('incoming_call', {
           callerId,

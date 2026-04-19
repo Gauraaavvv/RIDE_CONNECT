@@ -106,23 +106,30 @@ router.post('/', auth, async (req, res) => {
     await newRequest.save();
     console.log('[REQUEST CREATE] Request saved:', newRequest._id);
 
-    // Create notification for receiver
-    await Notification.create({
-      userId: receiverId,
-      type: 'request_accepted',
-      title: `New ${type === 'car' ? 'Car Rental' : 'Driver Hire'} Request`,
-      message: `${req.user.name} wants to ${type === 'car' ? 'rent your car' : 'hire you'}`,
-      metadata: {
-        requestId: newRequest._id,
-        senderId: req.user.id,
-        senderName: req.user.name,
-        type,
-        entityId
-      }
-    });
-
-    // Emit real-time notification via Socket.io
+    // Create notification for receiver (do not fail request creation if notification fails)
     const io = req.app.get('io');
+    try {
+      const createdNotification = await Notification.create({
+        userId: receiverId,
+        type: 'new_request',
+        title: `New ${type === 'car' ? 'Car Rental' : 'Driver Hire'} Request`,
+        message: `${req.user.name} wants to ${type === 'car' ? 'rent your car' : 'hire you'}`,
+        metadata: {
+          requestId: newRequest._id,
+          senderId: req.user.id,
+          senderName: req.user.name,
+          type,
+          entityId
+        }
+      });
+      if (io) {
+        io.to(receiverId.toString()).emit('new_notification', createdNotification);
+      }
+    } catch (notifError) {
+      console.error('[REQUEST CREATE] Failed to create global notification:', notifError);
+    }
+
+    // Emit real-time request event via Socket.io
     if (io) {
       io.to(receiverId.toString()).emit('new_request', {
         requestId: newRequest._id,
@@ -222,21 +229,28 @@ router.patch('/:id/accept', auth, async (req, res) => {
     request.status = 'accepted';
     await request.save();
 
-    // Notify sender
-    await Notification.create({
-      userId: request.senderId,
-      type: 'request_accepted',
-      title: 'Request Accepted',
-      message: `Your ${request.type} request has been accepted`,
-      metadata: {
-        requestId: request._id,
-        type: request.type,
-        entityId: request.entityId
-      }
-    });
-
-    // Emit real-time notification
     const io = req.app.get('io');
+    // Notify sender (do not fail accept if notification fails)
+    try {
+      const notification = await Notification.create({
+        userId: request.senderId,
+        type: 'request_accepted',
+        title: 'Request Accepted',
+        message: `Your ${request.type} request has been accepted`,
+        metadata: {
+          requestId: request._id,
+          type: request.type,
+          entityId: request.entityId
+        }
+      });
+      if (io) {
+        io.to(request.senderId.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[REQUEST ACCEPT] Failed to create global notification:', notifError);
+    }
+
+    // Emit real-time status update
     if (io) {
       io.to(request.senderId.toString()).emit('request_status_update', {
         requestId: request._id,
@@ -292,21 +306,28 @@ router.patch('/:id/reject', auth, async (req, res) => {
     request.status = 'rejected';
     await request.save();
 
-    // Notify sender
-    await Notification.create({
-      userId: request.senderId,
-      type: 'request_rejected',
-      title: 'Request Rejected',
-      message: `Your ${request.type} request has been rejected`,
-      metadata: {
-        requestId: request._id,
-        type: request.type,
-        entityId: request.entityId
-      }
-    });
-
-    // Emit real-time notification
     const io = req.app.get('io');
+    // Notify sender (do not fail reject if notification fails)
+    try {
+      const notification = await Notification.create({
+        userId: request.senderId,
+        type: 'request_rejected',
+        title: 'Request Rejected',
+        message: `Your ${request.type} request has been rejected`,
+        metadata: {
+          requestId: request._id,
+          type: request.type,
+          entityId: request.entityId
+        }
+      });
+      if (io) {
+        io.to(request.senderId.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[REQUEST REJECT] Failed to create global notification:', notifError);
+    }
+
+    // Emit real-time status update
     if (io) {
       io.to(request.senderId.toString()).emit('request_status_update', {
         requestId: request._id,

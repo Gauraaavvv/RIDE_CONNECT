@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
-import { getSocket } from '../../services/socket';
+import { useDispatch } from 'react-redux';
+import { getSocket, ensureSocketJoined } from '../../services/socket';
+import { addNotification } from '../../store/slices/notificationSlice';
 
 interface CallModalProps {
   isOpen: boolean;
@@ -34,6 +36,7 @@ const CallModal: React.FC<CallModalProps> = ({
   onReject,
   onEndCall
 }) => {
+  const dispatch = useDispatch();
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -103,6 +106,20 @@ const CallModal: React.FC<CallModalProps> = ({
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit('ice_candidate', { targetUserId: peerUserId, candidate: event.candidate });
+      }
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+      const state = peerConnection.iceConnectionState;
+      if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        console.warn('WebRTC connection dropped. State:', state);
+        dispatch(addNotification({
+          type: 'error',
+          title: 'Call Dropped',
+          message: 'Connection was lost.',
+          duration: 4000
+        }));
+        handleEndCall();
       }
     };
 
@@ -193,11 +210,13 @@ const CallModal: React.FC<CallModalProps> = ({
     if (!socket) {
       return;
     }
-
     startedRef.current = true;
 
     (async () => {
       try {
+        // Ensure server associates this socket with the current user room before signaling
+        await ensureSocketJoined(currentUserId);
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: callType === 'video',
           audio: true
@@ -223,13 +242,27 @@ const CallModal: React.FC<CallModalProps> = ({
           entityId: entityId || null,
           entityType: entityType || null
         });
-      } catch (e) {
+      } catch (e: any) {
         console.error('Failed to start outgoing call:', e);
         startedRef.current = false;
+        
+        let message = 'Could not start call.';
+        if (e.name === 'NotAllowedError') {
+           message = 'Microphone/Camera permission denied.';
+        } else if (e.name === 'NotFoundError') {
+           message = 'No microphone or camera found.';
+        }
+        dispatch(addNotification({
+           type: 'error',
+           title: 'Call Error',
+           message,
+           duration: 4000
+        }));
+
         onReject();
       }
     })();
-  }, [callType, currentUserId, currentUserName, entityId, entityType, isIncoming, isOpen, onReject, peerUserId]);
+  }, [callType, currentUserId, currentUserName, entityId, entityType, isIncoming, isOpen, onReject, peerUserId, dispatch]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -262,7 +295,9 @@ const CallModal: React.FC<CallModalProps> = ({
         localVideoRef.current.srcObject = stream;
       }
 
+      await ensureSocketJoined(currentUserId);
       const socket = socketRef.current || getSocket();
+      
       const peerConnection = setupPeerConnection(socket);
 
       // Add local stream to peer connection
@@ -286,9 +321,22 @@ const CallModal: React.FC<CallModalProps> = ({
 
       setIsConnected(true);
       onAccept?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error accessing media devices:', error);
-      alert('Could not access camera/microphone');
+      
+      let message = 'Could not access camera/microphone';
+      if (error.name === 'NotAllowedError') {
+         message = 'Microphone/Camera permission denied.';
+      } else if (error.name === 'NotFoundError') {
+         message = 'No microphone or camera found.';
+      }
+      dispatch(addNotification({
+         type: 'error',
+         title: 'Call Error',
+         message,
+         duration: 4000
+      }));
+      
       onReject();
     }
   };

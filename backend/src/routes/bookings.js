@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const Booking = require('../models/Booking');
 const Ride = require('../models/Ride');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 const normalizeLocation = (location, fallbackName = 'N/A') => {
   if (!location) {
@@ -157,18 +158,64 @@ router.post('/', auth, async (req, res) => {
     // DO NOT immediately add passenger to ride - owner must approve first
     // await ride.addPassenger(req.user.id, Number(seats), normalizedPickup.name, normalizedDrop.name);
 
-    // Add notification
+    // Internal booking log (does not power the global notifications dropdown)
     await booking.addNotification(
-      'booking_confirmed',
-      `Your booking for ride from ${ride.source} to ${ride.destination} has been confirmed`,
+      'booking_created',
+      `Booking request created for ride from ${ride.source} to ${ride.destination}`,
       req.user.id
     );
 
     await booking.addNotification(
-      'booking_confirmed',
+      'new_booking_request',
       `New booking request from ${req.user.name} for your ride`,
       ride.driver
     );
+
+    // Global notification document for driver (powers /api/notifications)
+    try {
+      const notification = await Notification.create({
+        userId: ride.driver,
+        type: 'new_booking_request',
+        title: 'New Booking Request',
+        message: `${req.user.name} requested ${booking.seats} seat(s) for ${ride.source} → ${ride.destination}`,
+        metadata: {
+          bookingId: booking._id,
+          rideId: ride._id,
+          passengerId: req.user.id,
+          passengerName: req.user.name,
+          seats: booking.seats
+        }
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(ride.driver.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[BOOKING CREATE] Failed to create global notification:', notifError);
+    }
+
+    // Optional: global notification for passenger (booking request created)
+    try {
+      const notification = await Notification.create({
+        userId: req.user.id,
+        type: 'booking_created',
+        title: 'Booking Requested',
+        message: `Your booking request for ${ride.source} → ${ride.destination} was sent`,
+        metadata: {
+          bookingId: booking._id,
+          rideId: ride._id,
+          driverId: ride.driver,
+          seats: booking.seats
+        }
+      });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user.id.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[BOOKING CREATE] Failed to create passenger notification:', notifError);
+    }
 
     // Emit real-time notification to driver via Socket.io
     const io = req.app.get('io');
@@ -267,6 +314,12 @@ router.patch('/:id/accept', auth, async (req, res) => {
           booking.pickupLocation?.name || '',
           booking.dropLocation?.name || ''
         );
+        // Ensure passenger status is confirmed inside the ride document too
+        try {
+          await booking.ride.acceptPassenger(booking.passenger);
+        } catch (acceptPassengerError) {
+          console.warn('[BOOKING ACCEPT] Could not mark ride passenger confirmed:', acceptPassengerError?.message || acceptPassengerError);
+        }
         console.log('[BOOKING ACCEPT] Passenger added to ride successfully');
       } catch (rideError) {
         console.error('[BOOKING ACCEPT] Error adding passenger to ride:', rideError);
@@ -280,12 +333,33 @@ router.patch('/:id/accept', auth, async (req, res) => {
       }
     }
 
-    // Notify passenger
+    // Internal booking log
     await booking.addNotification(
       'booking_accepted',
       `Your booking has been accepted by the driver`,
       booking.passenger
     );
+
+    // Global notification document for passenger (powers /api/notifications)
+    try {
+      const notification = await Notification.create({
+        userId: booking.passenger,
+        type: 'booking_accepted',
+        title: 'Booking Accepted',
+        message: 'Your booking has been accepted by the driver',
+        metadata: {
+          bookingId: booking._id,
+          rideId: booking.ride?._id || booking.ride,
+          driverId: booking.driver
+        }
+      });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(booking.passenger.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[BOOKING ACCEPT] Failed to create global notification:', notifError);
+    }
 
     // Emit real-time notification to passenger via Socket.io
     const io = req.app.get('io');
@@ -350,12 +424,33 @@ router.patch('/:id/reject', auth, async (req, res) => {
     await booking.save();
     console.log('[BOOKING REJECT] Booking rejected successfully');
 
-    // Notify passenger
+    // Internal booking log
     await booking.addNotification(
       'booking_rejected',
       `Your booking has been rejected by the driver`,
       booking.passenger
     );
+
+    // Global notification document for passenger (powers /api/notifications)
+    try {
+      const notification = await Notification.create({
+        userId: booking.passenger,
+        type: 'booking_rejected',
+        title: 'Booking Rejected',
+        message: 'Your booking has been rejected by the driver',
+        metadata: {
+          bookingId: booking._id,
+          rideId: booking.ride,
+          driverId: booking.driver
+        }
+      });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(booking.passenger.toString()).emit('new_notification', notification);
+      }
+    } catch (notifError) {
+      console.error('[BOOKING REJECT] Failed to create global notification:', notifError);
+    }
 
     // Emit real-time notification to passenger via Socket.io
     const io = req.app.get('io');

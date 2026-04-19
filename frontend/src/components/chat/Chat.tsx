@@ -4,7 +4,7 @@ import { Send, X, Minimize2, Maximize2 } from 'lucide-react';
 import { messageAPI } from '../../services/api';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
-import { getSocket } from '../../services/socket';
+import { getSocket, ensureSocketJoined } from '../../services/socket';
 import { addNotification } from '../../store/slices/notificationSlice';
 
 type UserRef =
@@ -124,8 +124,11 @@ const Chat: React.FC<ChatProps> = ({
     }
 
     socketRef.current = socketInstance;
-    // Extra safety: ensure room join even if socket connected before auth hydration
-    socketInstance.emit('join', user.id);
+    
+    // Ensure socket is joined before setting up listeners that depend on it
+    ensureSocketJoined(user.id).catch(err => {
+      console.error('[Chat] Failed to join socket room:', err);
+    });
 
     const onReceiveMessage = (message: Message) => {
       const sender = getId(message.senderId);
@@ -145,10 +148,31 @@ const Chat: React.FC<ChatProps> = ({
       }
     };
 
+    const onMessageSent = (message: Message) => {
+       // Replace optimistic message with actual message from backend
+       setMessages((prev) =>
+         prev
+           .map((m) => (m.text === message.text && m.isRead && getId(m.senderId) === user.id ? message : m))
+           // we could use a temporary ID to match, but text matching is a simple fallback
+           // better: the backend returns the saved message.
+           .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+       );
+    };
+
+    const onConnect = () => {
+       // If the socket reconnects while chat is open, we might have missed messages.
+       // Refetch messages to ensure UI is up-to-date.
+       loadMessages();
+    };
+
     socketInstance.on('receive_message', onReceiveMessage);
+    socketInstance.on('message_sent', onMessageSent);
+    socketInstance.on('connect', onConnect);
 
     return () => {
       socketInstance.off('receive_message', onReceiveMessage);
+      socketInstance.off('message_sent', onMessageSent);
+      socketInstance.off('connect', onConnect);
     };
   }, [isOpen, receiverId, user?.id, dispatch]);
 
@@ -167,6 +191,9 @@ const Chat: React.FC<ChatProps> = ({
 
     const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     try {
+      // Ensure we are joined to the socket room before we send the message
+      await ensureSocketJoined(user.id);
+      
       const optimisticMessage: Message = {
         _id: optimisticId,
         senderId: user.id,
@@ -179,19 +206,18 @@ const Chat: React.FC<ChatProps> = ({
       setMessages((prev) => [...prev, optimisticMessage]);
       setNewMessage('');
 
-      // Persist via API (backend emits to receiver via socket)
-      const saved = await messageAPI.send({
-        receiverId,
-        text: optimisticMessage.text,
-        entityId,
-        entityType,
-      });
-
-      setMessages((prev) =>
-        prev
-          .map((m) => (m._id === optimisticId ? saved : m))
-          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      );
+      // Send to backend via Socket.IO directly, avoiding double-request if we were using API.
+      // The current backend allows both socket and API. The socket is what guarantees order.
+      const socketInstance = getSocket();
+      if (socketInstance) {
+        socketInstance.emit('send_message', {
+          receiverId,
+          text: optimisticMessage.text,
+          entityId,
+          entityType,
+          senderName: user.name
+        });
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
       setMessages((prev) => prev.filter((m) => m._id !== optimisticId));

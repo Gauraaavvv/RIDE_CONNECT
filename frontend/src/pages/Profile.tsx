@@ -107,6 +107,7 @@ const Profile: React.FC = () => {
   const [settingsNotifications, setSettingsNotifications] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [pendingBookings, setPendingBookings] = useState<any[]>([]);
+  const [bookingActionLoading, setBookingActionLoading] = useState<Record<string, boolean>>({});
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
     type: '',
@@ -211,34 +212,88 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleAcceptBooking = async (bookingId: string) => {
+  const refreshPendingBookings = async () => {
     try {
+      const pending = await bookingAPI.listPendingForDriver();
+      setPendingBookings(Array.isArray(pending) ? pending : []);
+    } catch (error) {
+      console.error('Failed to refresh pending bookings:', error);
+    }
+  };
+
+  const handleAcceptBooking = async (bookingId: string) => {
+    if (bookingActionLoading[bookingId]) return;
+    setBookingActionLoading((prev) => ({ ...prev, [bookingId]: true }));
+    try {
+      // Validate booking is still pending before accepting
+      const booking = pendingBookings.find((b) => b._id === bookingId);
+      if (!booking || booking.status !== 'pending') {
+        dispatch(
+          addNotification({
+            type: 'error',
+            title: 'Cannot Accept',
+            message: 'Booking is no longer pending.',
+            duration: 3000,
+          })
+        );
+        await refreshPendingBookings();
+        return;
+      }
+
       await bookingAPI.accept(bookingId);
-      setPendingBookings(pendingBookings.filter(b => b._id !== bookingId));
+      // Remove from pending list immediately
+      setPendingBookings((prev) => prev.filter((b) => b._id !== bookingId));
       dispatch(
         addNotification({
           type: 'success',
           title: 'Booking Accepted',
-          message: 'Booking has been accepted successfully.',
+          message: 'Booking has been accepted.',
           duration: 3000,
         })
       );
-    } catch {
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || 'Could not accept booking. Try again.';
       dispatch(
         addNotification({
           type: 'error',
           title: 'Accept Failed',
-          message: 'Could not accept booking. Try again.',
+          message: errorMsg,
           duration: 3000,
         })
       );
+      if (String(errorMsg).includes('status')) {
+        await refreshPendingBookings();
+      }
+    } finally {
+      setBookingActionLoading((prev) => {
+        const next = { ...prev };
+        delete next[bookingId];
+        return next;
+      });
     }
   };
 
   const handleRejectBooking = async (bookingId: string) => {
+    if (bookingActionLoading[bookingId]) return;
+    setBookingActionLoading((prev) => ({ ...prev, [bookingId]: true }));
     try {
+      // Validate booking is still pending before rejecting
+      const booking = pendingBookings.find((b) => b._id === bookingId);
+      if (!booking || booking.status !== 'pending') {
+        dispatch(
+          addNotification({
+            type: 'error',
+            title: 'Cannot Reject',
+            message: 'Booking is no longer pending.',
+            duration: 3000,
+          })
+        );
+        await refreshPendingBookings();
+        return;
+      }
+
       await bookingAPI.reject(bookingId);
-      setPendingBookings(pendingBookings.filter(b => b._id !== bookingId));
+      setPendingBookings((prev) => prev.filter((b) => b._id !== bookingId));
       dispatch(
         addNotification({
           type: 'success',
@@ -247,15 +302,25 @@ const Profile: React.FC = () => {
           duration: 3000,
         })
       );
-    } catch {
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || 'Could not reject booking. Try again.';
       dispatch(
         addNotification({
           type: 'error',
           title: 'Reject Failed',
-          message: 'Could not reject booking. Try again.',
+          message: errorMsg,
           duration: 3000,
         })
       );
+      if (String(errorMsg).includes('status')) {
+        await refreshPendingBookings();
+      }
+    } finally {
+      setBookingActionLoading((prev) => {
+        const next = { ...prev };
+        delete next[bookingId];
+        return next;
+      });
     }
   };
 
@@ -273,7 +338,7 @@ const Profile: React.FC = () => {
     try {
       if (deleteModal.type === 'booking') {
         await bookingAPI.reject(deleteModal.id);
-        setPendingBookings(pendingBookings.filter(b => b._id !== deleteModal.id));
+        setPendingBookings((prev) => prev.filter((b) => b._id !== deleteModal.id));
         dispatch(
           addNotification({
             type: 'success',
@@ -323,15 +388,19 @@ const Profile: React.FC = () => {
         }
         const bookings = ridesRes.bookings || ridesRes.data?.bookings || [];
         const uid = String(u.id);
-        
-        // Filter pending bookings where user is the driver
-        const pending = bookings.filter((b: any) => {
-          const driverId = b.driver && typeof b.driver === 'object' && b.driver !== null && '_id' in b.driver
-            ? String((b.driver as { _id: string })._id)
-            : String(b.driver || '');
-          return driverId === uid && b.status === 'pending';
-        });
-        setPendingBookings(pending);
+        // Source of truth for actionable pending requests: backend driver-pending endpoint
+        try {
+          const pending = await bookingAPI.listPendingForDriver();
+          if (!cancelled) {
+            setPendingBookings(Array.isArray(pending) ? pending : []);
+          }
+        } catch (error) {
+          console.error('Failed to load pending bookings:', error);
+          if (!cancelled) {
+            setPendingBookings([]);
+          }
+        }
+
         const recentRides: RecentRide[] = bookings.slice(0, 12).map((b: Record<string, unknown>) => {
           const ride = b.ride as Record<string, unknown> | undefined;
           const driverId = b.driver && typeof b.driver === 'object' && b.driver !== null && '_id' in b.driver
@@ -683,19 +752,21 @@ const Profile: React.FC = () => {
                           <div className="flex space-x-2">
                             <motion.button
                               onClick={() => handleAcceptBooking(booking._id)}
-                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                              disabled={Boolean(bookingActionLoading[booking._id])}
+                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                             >
-                              Accept
+                              {bookingActionLoading[booking._id] ? '...' : 'Accept'}
                             </motion.button>
                             <motion.button
                               onClick={() => handleRejectBooking(booking._id)}
-                              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                              disabled={Boolean(bookingActionLoading[booking._id])}
+                              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                             >
-                              Reject
+                              {bookingActionLoading[booking._id] ? '...' : 'Reject'}
                             </motion.button>
                           </div>
                         </motion.div>

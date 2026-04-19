@@ -2,26 +2,26 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X, Minimize2, Maximize2 } from 'lucide-react';
 import { messageAPI } from '../../services/api';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../store/store';
+import { getSocket } from '../../services/socket';
+import { addNotification } from '../../store/slices/notificationSlice';
+
+type UserRef =
+  | string
+  | {
+      _id: string;
+      name: string;
+      avatar?: string;
+    };
 
 interface Message {
   _id: string;
-  senderId: string;
-  receiverId: string;
+  senderId: UserRef;
+  receiverId: UserRef;
   text: string;
   isRead: boolean;
   createdAt: string;
-  sender?: {
-    _id: string;
-    name: string;
-    avatar?: string;
-  };
-  receiver?: {
-    _id: string;
-    name: string;
-    avatar?: string;
-  };
 }
 
 interface ChatProps {
@@ -50,7 +50,14 @@ const Chat: React.FC<ChatProps> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useSelector((state: RootState) => state.auth);
-  const [socket, setSocket] = useState<any>(null);
+  const dispatch = useDispatch();
+  const socketRef = useRef<any>(null);
+
+  const getId = (value: UserRef) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    return value._id || '';
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -61,11 +68,10 @@ const Chat: React.FC<ChatProps> = ({
   }, [messages]);
 
   useEffect(() => {
-    if (isOpen && user?.id) {
+    if (isOpen && user?.id && receiverId) {
       loadMessages();
-      setupSocket();
     }
-  }, [isOpen, receiverId]);
+  }, [isOpen, receiverId, user?.id]);
 
   const loadMessages = async () => {
     try {
@@ -78,14 +84,14 @@ const Chat: React.FC<ChatProps> = ({
       
       // Calculate unread count
       const unread = sortedMessages.filter((m: Message) => 
-        !m.isRead && m.senderId !== user?.id
+        !m.isRead && getId(m.senderId) !== user?.id
       ).length;
       setUnreadCount(unread);
       
       // Mark messages as seen when chat opens
       if (unread > 0) {
         sortedMessages.forEach(async (m: Message) => {
-          if (!m.isRead && m.senderId !== user?.id) {
+          if (!m.isRead && getId(m.senderId) !== user?.id) {
             await messageAPI.markAsRead(m._id);
           }
         });
@@ -97,66 +103,85 @@ const Chat: React.FC<ChatProps> = ({
     }
   };
 
-  const setupSocket = () => {
-    // Connect to Socket.io server
-    const io = (window as any).io;
-    if (io && user?.id) {
-      const socketInstance = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
-      setSocket(socketInstance);
-      
-      // Join user room immediately on connection
-      socketInstance.on('connect', () => {
-        socketInstance.emit('join', user?.id);
-      });
-
-      // Join user room on initial connection
-      socketInstance.emit('join', user?.id);
-
-      // Listen for new messages
-      socketInstance.on('receive_message', (message: Message) => {
-        if (
-          (message.senderId === receiverId && message.receiverId === user?.id) ||
-          (message.senderId === user?.id && message.receiverId === receiverId)
-        ) {
-          setMessages((prev) => [...prev, message]);
-        }
-      });
-
-      // Handle reconnection
-      socketInstance.on('reconnect', () => {
-        socketInstance.emit('join', user?.id);
-      });
-
-      return () => {
-        socketInstance.disconnect();
-      };
+  useEffect(() => {
+    if (!isOpen || !user?.id || !receiverId) {
+      return;
     }
-  };
+
+    if (receiverId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
+
+    const socketInstance = getSocket();
+    if (!socketInstance) {
+      return;
+    }
+
+    socketRef.current = socketInstance;
+    // Extra safety: ensure room join even if socket connected before auth hydration
+    socketInstance.emit('join', user.id);
+
+    const onReceiveMessage = (message: Message) => {
+      const sender = getId(message.senderId);
+      const receiver = getId(message.receiverId);
+      if (
+        (sender === receiverId && receiver === user.id) ||
+        (sender === user.id && receiver === receiverId)
+      ) {
+        setMessages((prev) => [...prev, message]);
+      }
+    };
+
+    const onMessageSent = (message: Message) => {
+      const sender = getId(message.senderId);
+      const receiver = getId(message.receiverId);
+      if (sender === user.id && receiver === receiverId) {
+        setMessages((prev) => [...prev, message]);
+      }
+    };
+
+    socketInstance.on('receive_message', onReceiveMessage);
+    socketInstance.on('message_sent', onMessageSent);
+
+    return () => {
+      socketInstance.off('receive_message', onReceiveMessage);
+      socketInstance.off('message_sent', onMessageSent);
+    };
+  }, [isOpen, receiverId, user?.id, dispatch]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !user?.id) return;
+    if (!receiverId) return;
+    if (receiverId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
 
     try {
-      const message = await messageAPI.send({
+      const socketInstance = socketRef.current || getSocket();
+      if (!socketInstance) {
+        throw new Error('Socket not connected');
+      }
+
+      socketInstance.emit('send_message', {
         receiverId,
         text: newMessage.trim(),
         entityId,
-        entityType
+        entityType,
+        senderName: user.name
       });
 
-      // Emit via socket if connected
-      if (socket) {
-        socket.emit('send_message', {
-          senderId: user.id,
-          receiverId,
-          text: newMessage.trim(),
-          entityId,
-          entityType,
-          senderName: user.name
-        });
-      }
-
-      setMessages((prev) => [...prev, message]);
       setNewMessage('');
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -227,7 +252,7 @@ const Chat: React.FC<ChatProps> = ({
                 </div>
               ) : (
                 messages.map((message) => {
-                  const isOwn = message.senderId === user?.id;
+                  const isOwn = getId(message.senderId) === user?.id;
                   return (
                     <motion.div
                       key={message._id}

@@ -1,29 +1,53 @@
 const Message = require('../models/Message');
 const Notification = require('../models/Notification');
+const { resolveReceiverId, normalizeId } = require('../utils/resolveReceiverId');
 
 const attachMessagingSocket = (io) => {
   io.on('connection', (socket) => {
     // User joins their personal room (already handled in bookingSocket.js)
     socket.on('join', (userId) => {
-      if (!userId || typeof userId !== 'string') {
+      if (!userId) {
         return;
       }
-      socket.join(userId);
+      const userIdStr = typeof userId === 'string' ? userId : String(userId);
+      if (!userIdStr || userIdStr === '[object Object]') {
+        return;
+      }
+      socket.userId = userIdStr;
+      socket.data = socket.data || {};
+      socket.data.userId = userIdStr;
+      socket.join(userIdStr);
+      console.log('[SOCKET JOIN] socket:', socket.id, 'userId:', userIdStr);
     });
 
     // Send message event
     socket.on('send_message', async (data) => {
       try {
-        const { senderId, receiverId, text, entityId, entityType } = data;
+        const senderId = normalizeId(socket.data?.userId || data.senderId);
+        const { receiverId: bodyReceiverId, text, entityId, entityType } = data;
 
         // Validation
-        if (!senderId || !receiverId || !text) {
+        if (!senderId || !text) {
           socket.emit('error', { message: 'Missing required fields' });
           return;
         }
 
-        if (senderId === receiverId) {
-          socket.emit('error', { message: 'Cannot send message to yourself' });
+        let resolvedReceiverId = '';
+        try {
+          const resolved = await resolveReceiverId({ entityType, entityId });
+          resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
+        } catch (e) {
+          socket.emit('error', { message: e.message || 'Failed to resolve receiver' });
+          return;
+        }
+
+        if (!resolvedReceiverId) {
+          socket.emit('error', { message: 'Missing required fields' });
+          return;
+        }
+
+        if (normalizeId(senderId) === normalizeId(resolvedReceiverId)) {
+          socket.emit('error', { message: 'You cannot interact with your own listing' });
           return;
         }
 
@@ -32,10 +56,14 @@ const attachMessagingSocket = (io) => {
           return;
         }
 
+        console.log('[SOCKET MESSAGE] Sender:', senderId);
+        console.log('[SOCKET MESSAGE] Receiver:', resolvedReceiverId);
+        console.log('[SOCKET MESSAGE] Emitting to room:', resolvedReceiverId);
+
         // Create message
         const message = new Message({
           senderId,
-          receiverId,
+          receiverId: resolvedReceiverId,
           text: text.trim(),
           entityId: entityId || null,
           entityType: entityType || null
@@ -45,7 +73,7 @@ const attachMessagingSocket = (io) => {
 
         // Create notification for receiver
         await Notification.create({
-          userId: receiverId,
+          userId: resolvedReceiverId,
           type: 'new_message',
           title: 'New Message',
           message: `New message received`,
@@ -61,7 +89,8 @@ const attachMessagingSocket = (io) => {
           .populate('senderId', 'name avatar')
           .populate('receiverId', 'name avatar');
 
-        io.to(receiverId).emit('receive_message', populatedMessage);
+        io.to(resolvedReceiverId).emit('receive_message', populatedMessage);
+        io.to(resolvedReceiverId).emit('new_message', populatedMessage);
 
         // Send confirmation to sender
         socket.emit('message_sent', populatedMessage);
@@ -117,17 +146,45 @@ const attachCallingSocket = (io) => {
     
     // Call user
     socket.on('call_user', (data) => {
-      const { callerId, receiverId, callerName, callType } = data;
-      if (!callerId || !receiverId) {
+      const callerId = normalizeId(socket.data?.userId || data.callerId);
+      const { receiverId: bodyReceiverId, callerName, callType, entityId, entityType } = data;
+      if (!callerId) {
         return;
       }
-      
-      io.to(receiverId).emit('incoming_call', {
-        callerId,
-        callerName,
-        callType: callType || 'audio',
-        signalData: data.signalData
-      });
+
+      (async () => {
+        let resolvedReceiverId = '';
+        try {
+          const resolved = await resolveReceiverId({ entityType, entityId });
+          resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
+        } catch (e) {
+          socket.emit('error', { message: e.message || 'Failed to resolve receiver' });
+          return;
+        }
+
+        if (!resolvedReceiverId) {
+          socket.emit('error', { message: 'Missing required fields' });
+          return;
+        }
+
+        if (normalizeId(callerId) === normalizeId(resolvedReceiverId)) {
+          socket.emit('error', { message: 'You cannot interact with your own listing' });
+          return;
+        }
+
+        console.log('[SOCKET CALL] Sender:', callerId);
+        console.log('[SOCKET CALL] Receiver:', resolvedReceiverId);
+        console.log('[SOCKET CALL] Emitting to room:', resolvedReceiverId);
+
+        io.to(resolvedReceiverId).emit('incoming_call', {
+          callerId,
+          callerName,
+          callType: callType || 'audio',
+          signalData: data.signalData,
+          entityId: entityId || null,
+          entityType: entityType || null
+        });
+      })();
     });
 
     // Accept call

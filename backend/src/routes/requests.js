@@ -72,8 +72,9 @@ router.post('/', auth, async (req, res) => {
     // Prevent self-request
     if (receiverId.toString() === req.user.id) {
       return res.status(400).json({
+        success: false,
         status: 'error',
-        message: 'You cannot request your own listing'
+        message: 'You cannot interact with your own listing'
       });
     }
 

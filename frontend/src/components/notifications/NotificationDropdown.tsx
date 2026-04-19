@@ -4,6 +4,7 @@ import { Bell, X, Check } from 'lucide-react';
 import { notificationAPI } from '../../services/api';
 import { useDispatch } from 'react-redux';
 import { addNotification } from '../../store/slices/notificationSlice';
+import { getSocket } from '../../services/socket';
 
 interface NotificationItem {
   _id: string;
@@ -25,7 +26,10 @@ const NotificationDropdown: React.FC = () => {
 
   useEffect(() => {
     loadNotifications();
-    setupSocketNotifications();
+    const cleanup = setupSocketNotifications();
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
   }, []);
 
   useEffect(() => {
@@ -53,78 +57,108 @@ const NotificationDropdown: React.FC = () => {
   };
 
   const setupSocketNotifications = () => {
-    // This would connect to Socket.io for real-time notifications
-    const io = (window as any).io;
-    if (io) {
-      const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
-      
-      socket.on('booking:new_request', (data: any) => {
-        setNotifications((prev) => [
-          {
-            _id: Date.now().toString(),
-            type: 'new_booking_request',
-            title: 'New Booking Request',
-            message: `New booking request from ${data.passenger}`,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-            metadata: data
-          },
-          ...prev
-        ]);
-        setUnreadCount((prev) => prev + 1);
-        
-        dispatch(
-          addNotification({
-            type: 'success',
-            title: 'New Booking Request',
-            message: `You have a new booking request`,
-            duration: 5000
-          })
-        );
-      });
+    const socket = getSocket();
+    if (!socket) return;
 
-      socket.on('booking:status_update', (data: any) => {
-        const title = data.status === 'confirmed' ? 'Booking Accepted' : 'Booking Rejected';
-        setNotifications((prev) => [
-          {
-            _id: Date.now().toString(),
-            type: data.status === 'confirmed' ? 'booking_accepted' : 'booking_rejected',
-            title,
-            message: data.message,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-            metadata: data
-          },
-          ...prev
-        ]);
-        setUnreadCount((prev) => prev + 1);
-        
-        dispatch(
-          addNotification({
-            type: data.status === 'confirmed' ? 'success' : 'error',
-            title,
-            message: data.message,
-            duration: 5000
-          })
-        );
-      });
+    const onNewBooking = (data: any) => {
+      setNotifications((prev) => [
+        {
+          _id: Date.now().toString(),
+          type: 'new_booking_request',
+          title: 'New Booking Request',
+          message: `New booking request from ${data?.passenger || 'a passenger'}`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          metadata: data
+        },
+        ...prev
+      ]);
+      setUnreadCount((prev) => prev + 1);
 
-      socket.on('new_message', (data: any) => {
-        setNotifications((prev) => [
-          {
-            _id: Date.now().toString(),
-            type: 'new_message',
-            title: 'New Message',
-            message: `${data.senderId?.name || 'Someone'} sent you a message`,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-            metadata: data
-          },
-          ...prev
-        ]);
-        setUnreadCount((prev) => prev + 1);
-      });
-    }
+      dispatch(
+        addNotification({
+          type: 'success',
+          title: 'New Booking Request',
+          message: `You have a new booking request`,
+          duration: 5000
+        })
+      );
+    };
+
+    const onBookingStatus = (data: any) => {
+      const title = data?.status === 'confirmed' ? 'Booking Accepted' : 'Booking Rejected';
+      setNotifications((prev) => [
+        {
+          _id: Date.now().toString(),
+          type: data?.status === 'confirmed' ? 'booking_accepted' : 'booking_rejected',
+          title,
+          message: data?.message || 'Booking status updated',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          metadata: data
+        },
+        ...prev
+      ]);
+      setUnreadCount((prev) => prev + 1);
+
+      dispatch(
+        addNotification({
+          type: data?.status === 'confirmed' ? 'success' : 'error',
+          title,
+          message: data?.message || 'Booking status updated',
+          duration: 5000
+        })
+      );
+    };
+
+    const onNewMessage = (data: any) => {
+      const senderName = data?.senderId?.name || 'Someone';
+      setNotifications((prev) => [
+        {
+          _id: Date.now().toString(),
+          type: 'new_message',
+          title: 'New Message',
+          message: `${senderName} sent you a message`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          metadata: data
+        },
+        ...prev
+      ]);
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    const onIncomingCall = (data: any) => {
+      const callerName = data?.callerName || 'Someone';
+      setNotifications((prev) => [
+        {
+          _id: Date.now().toString(),
+          type: 'incoming_call',
+          title: 'Incoming Call',
+          message: `${callerName} is calling you`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          metadata: data
+        },
+        ...prev
+      ]);
+      setUnreadCount((prev) => prev + 1);
+    };
+
+    socket.on('booking:new_request', onNewBooking);
+    socket.on('booking:status_update', onBookingStatus);
+    // Server emits both; support either event name.
+    socket.on('new_message', onNewMessage);
+    socket.on('receive_message', onNewMessage);
+    socket.on('incoming_call', onIncomingCall);
+
+    return () => {
+      socket.off('booking:new_request', onNewBooking);
+      socket.off('booking:status_update', onBookingStatus);
+      socket.off('new_message', onNewMessage);
+      socket.off('receive_message', onNewMessage);
+      socket.off('incoming_call', onIncomingCall);
+    };
   };
 
   const handleMarkAsRead = async (notificationId: string) => {

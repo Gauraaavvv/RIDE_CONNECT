@@ -240,6 +240,11 @@ export const bookingAPI = {
     return response.data.data?.bookings || response.data.bookings || response.data;
   },
 
+  listPendingForDriver: async () => {
+    const response = await api.get('/bookings/pending');
+    return response.data.data?.bookings || response.data.bookings || response.data;
+  },
+
   accept: async (id: string) => {
     const response = await api.patch(`/bookings/${id}/accept`);
     return response.data.data?.booking || response.data.booking || response.data;

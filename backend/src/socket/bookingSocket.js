@@ -2,10 +2,18 @@ const attachBookingSocket = (io) => {
   io.on('connection', (socket) => {
     // Mandatory: Join user's personal room on connection
     socket.on('join', (userId) => {
-      if (!userId || typeof userId !== 'string') {
+      if (!userId) {
         return;
       }
-      socket.join(userId);
+      const userIdStr = typeof userId === 'string' ? userId : String(userId);
+      if (!userIdStr || userIdStr === '[object Object]') {
+        return;
+      }
+      socket.userId = userIdStr;
+      socket.data = socket.data || {};
+      socket.data.userId = userIdStr;
+      socket.join(userIdStr);
+      console.log('[SOCKET JOIN] socket:', socket.id, 'userId:', userIdStr);
     });
 
     // Legacy: join_user (deprecated, kept for compatibility)
@@ -14,6 +22,7 @@ const attachBookingSocket = (io) => {
         return;
       }
       socket.join(`user:${userId}`);
+      console.log('[SOCKET JOIN_USER] socket:', socket.id, 'userId:', userId);
     });
 
     // Leave user's room

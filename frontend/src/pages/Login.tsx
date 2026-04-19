@@ -6,6 +6,7 @@ import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { loginStart, loginSuccess, loginFailure } from '../store/slices/authSlice';
 import { addNotification } from '../store/slices/notificationSlice';
 import { authAPI } from '../services/api';
+import { initializeSocket } from '../services/socket';
 import PageShell from '../components/layout/PageShell';
 
 const Login: React.FC = () => {
@@ -35,6 +36,7 @@ const Login: React.FC = () => {
       
       localStorage.setItem('token', auth.token);
       dispatch(loginSuccess(auth.user));
+      initializeSocket();
       
       dispatch(addNotification({
         type: 'success',

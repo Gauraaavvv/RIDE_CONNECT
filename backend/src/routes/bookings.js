@@ -383,6 +383,32 @@ router.patch('/:id/reject', auth, async (req, res) => {
   }
 });
 
+// @route   GET /api/bookings/pending
+// @desc    Get pending booking requests for current user as driver
+// @access  Private
+router.get('/pending', auth, async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      driver: req.user.id,
+      status: 'pending'
+    })
+      .populate(['ride', 'driver', 'passenger'])
+      .sort({ createdAt: -1 });
+
+    res.json({
+      status: 'success',
+      data: { bookings }
+    });
+  } catch (error) {
+    console.error('Get pending bookings error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch pending bookings',
+      error: error.message
+    });
+  }
+});
+
 // @route   GET /api/bookings
 // @desc    Get user's bookings
 // @access  Private

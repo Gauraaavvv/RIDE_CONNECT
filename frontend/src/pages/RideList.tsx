@@ -120,6 +120,24 @@ const RideList: React.FC = () => {
   };
 
   const handleOpenChat = (ride: Ride) => {
+    if (!ride.driverId) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Chat unavailable',
+        message: 'Could not determine the ride owner. Please refresh and try again.',
+        duration: 4000
+      }));
+      return;
+    }
+    if (user?.id && ride.driverId === user.id) {
+      dispatch(addNotification({
+        type: 'error',
+        title: 'Not allowed',
+        message: 'You cannot interact with your own listing.',
+        duration: 4000
+      }));
+      return;
+    }
     setSelectedRideForChat(ride);
     setChatOpen(true);
   };
@@ -175,7 +193,8 @@ const RideList: React.FC = () => {
                 : '';
           const prefs = (r.preferences || {}) as Ride['preferences'];
           return {
-            id: String(r.id),
+            id: String(r.id || (r as any)._id || ''),
+            driverId: String((r as any).driverId || (r as any).driver?._id || (r as any).driver || ''),
             driverName: String(r.driverName || 'Driver'),
             source: String(r.source || ''),
             destination: String(r.destination || ''),
@@ -627,7 +646,7 @@ const RideList: React.FC = () => {
       {/* Chat Component */}
       {chatOpen && selectedRideForChat && user && (
         <Chat
-          receiverId={selectedRideForChat.driverId || selectedRideForChat.id}
+          receiverId={selectedRideForChat.driverId || ''}
           receiverName={selectedRideForChat.driverName}
           receiverAvatar={undefined}
           entityId={selectedRideForChat.id}

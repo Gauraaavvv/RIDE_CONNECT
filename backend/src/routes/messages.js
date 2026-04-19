@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const Notification = require('../models/Notification');
 const auth = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
+const { resolveReceiverId, normalizeId } = require('../utils/resolveReceiverId');
 
 // Rate limiting for sending messages
 const messageRateLimit = rateLimit({
@@ -22,26 +23,50 @@ const messageRateLimit = rateLimit({
 // @access  Private
 router.post('/send', auth, messageRateLimit, async (req, res) => {
   try {
-    console.log('[MESSAGE SEND] Sender ID:', req.user.id, 'Body:', { receiverId: req.body.receiverId, textLength: req.body.text?.length });
-    const { receiverId, text, entityId, entityType } = req.body;
+    console.log('[MESSAGE SEND] Sender ID:', req.user.id, 'Body:', { receiverId: req.body.receiverId, textLength: req.body.text?.length, entityId: req.body.entityId, entityType: req.body.entityType });
+    const { receiverId: bodyReceiverId, text, entityId, entityType } = req.body;
 
     // Validation
-    if (!receiverId || !text) {
+    if (!text) {
       return res.status(400).json({
+        success: false,
         status: 'error',
-        message: 'receiverId and text are required'
+        message: 'text is required'
       });
     }
 
-    if (receiverId === req.user.id) {
-      return res.status(400).json({
+    let resolvedReceiverId = '';
+    try {
+      const resolved = await resolveReceiverId({ entityType, entityId });
+      resolvedReceiverId = resolved?.receiverId ? normalizeId(resolved.receiverId) : normalizeId(bodyReceiverId);
+    } catch (e) {
+      const statusCode = e.statusCode || 400;
+      return res.status(statusCode).json({
+        success: false,
         status: 'error',
-        message: 'Cannot send message to yourself'
+        message: e.message || 'Failed to resolve receiver'
+      });
+    }
+
+    if (!resolvedReceiverId) {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'receiverId is required'
+      });
+    }
+
+    if (normalizeId(req.user.id) === normalizeId(resolvedReceiverId)) {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'You cannot interact with your own listing'
       });
     }
 
     if (text.length > 2000) {
       return res.status(400).json({
+        success: false,
         status: 'error',
         message: 'Message text too long (max 2000 characters)'
       });
@@ -50,7 +75,7 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
     // Create message
     const message = new Message({
       senderId: req.user.id,
-      receiverId,
+      receiverId: resolvedReceiverId,
       text: text.trim(),
       entityId: entityId || null,
       entityType: entityType || null
@@ -62,7 +87,7 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
     // Create notification for receiver
     try {
       await Notification.create({
-        userId: receiverId,
+        userId: resolvedReceiverId,
         type: 'new_message',
         title: 'New Message',
         message: `${req.user.name} sent you a message`,
@@ -83,8 +108,15 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
       const populatedMessage = await Message.findById(message._id)
         .populate('senderId', 'name avatar')
         .populate('receiverId', 'name avatar');
-      
-      io.to(receiverId).emit('new_message', populatedMessage);
+
+      const receiverRoom = normalizeId(resolvedReceiverId);
+      console.log('[MESSAGE SEND] Sender:', normalizeId(req.user.id));
+      console.log('[MESSAGE SEND] Receiver:', receiverRoom);
+      console.log('[MESSAGE SEND] Emitting to room:', receiverRoom);
+
+      // Prefer `receive_message` (Chat), also emit legacy `new_message` (NotificationDropdown)
+      io.to(receiverRoom).emit('receive_message', populatedMessage);
+      io.to(receiverRoom).emit('new_message', populatedMessage);
     }
 
     res.status(201).json({

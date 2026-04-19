@@ -211,6 +211,7 @@ router.post('/', auth, async (req, res) => {
 // @access  Private
 router.patch('/:id/accept', auth, async (req, res) => {
   try {
+    console.log('[BOOKING ACCEPT] User ID:', req.user.id, 'Booking ID:', req.params.id);
     const booking = await Booking.findById(req.params.id).populate('ride');
     
     if (!booking) {
@@ -219,6 +220,8 @@ router.patch('/:id/accept', auth, async (req, res) => {
         message: 'Booking not found'
       });
     }
+
+    console.log('[BOOKING ACCEPT] Booking found:', booking._id, 'Status:', booking.status);
 
     // Only the driver/owner can accept bookings
     if (booking.driver.toString() !== req.user.id.toString()) {
@@ -235,18 +238,46 @@ router.patch('/:id/accept', auth, async (req, res) => {
       });
     }
 
+    // Validate ride is still available before accepting
+    if (booking.ride && !booking.ride.canBook) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Ride is no longer available. It may be full or cancelled.'
+      });
+    }
+
+    // Check if ride has enough seats
+    if (booking.ride && booking.ride.remainingSeats < booking.seats) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Only ${booking.ride.remainingSeats} seats available, but ${booking.seats} requested`
+      });
+    }
+
     // Update booking status
     booking.status = 'confirmed';
     await booking.save();
 
     // Add passenger to ride (now that it's accepted)
     if (booking.ride) {
-      await booking.ride.addPassenger(
-        booking.passenger,
-        booking.seats,
-        booking.pickupLocation.name,
-        booking.dropLocation.name
-      );
+      try {
+        await booking.ride.addPassenger(
+          booking.passenger,
+          booking.seats,
+          booking.pickupLocation?.name || '',
+          booking.dropLocation?.name || ''
+        );
+        console.log('[BOOKING ACCEPT] Passenger added to ride successfully');
+      } catch (rideError) {
+        console.error('[BOOKING ACCEPT] Error adding passenger to ride:', rideError);
+        // Rollback booking status
+        booking.status = 'pending';
+        await booking.save();
+        return res.status(400).json({
+          status: 'error',
+          message: rideError.message || 'Failed to add passenger to ride'
+        });
+      }
     }
 
     // Notify passenger
@@ -287,6 +318,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
 // @access  Private
 router.patch('/:id/reject', auth, async (req, res) => {
   try {
+    console.log('[BOOKING REJECT] User ID:', req.user.id, 'Booking ID:', req.params.id);
     const booking = await Booking.findById(req.params.id);
     
     if (!booking) {
@@ -295,6 +327,8 @@ router.patch('/:id/reject', auth, async (req, res) => {
         message: 'Booking not found'
       });
     }
+
+    console.log('[BOOKING REJECT] Booking found:', booking._id, 'Status:', booking.status);
 
     // Only the driver/owner can reject bookings
     if (booking.driver.toString() !== req.user.id.toString()) {
@@ -314,6 +348,7 @@ router.patch('/:id/reject', auth, async (req, res) => {
     // Update booking status
     booking.status = 'rejected';
     await booking.save();
+    console.log('[BOOKING REJECT] Booking rejected successfully');
 
     // Notify passenger
     await booking.addNotification(

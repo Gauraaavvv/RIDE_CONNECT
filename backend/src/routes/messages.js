@@ -22,6 +22,7 @@ const messageRateLimit = rateLimit({
 // @access  Private
 router.post('/send', auth, messageRateLimit, async (req, res) => {
   try {
+    console.log('[MESSAGE SEND] Sender ID:', req.user.id, 'Body:', { receiverId: req.body.receiverId, textLength: req.body.text?.length });
     const { receiverId, text, entityId, entityType } = req.body;
 
     // Validation
@@ -56,19 +57,25 @@ router.post('/send', auth, messageRateLimit, async (req, res) => {
     });
 
     await message.save();
+    console.log('[MESSAGE SEND] Message saved:', message._id);
 
     // Create notification for receiver
-    await Notification.create({
-      userId: receiverId,
-      type: 'new_message',
-      title: 'New Message',
-      message: `${req.user.name} sent you a message`,
-      metadata: {
-        messageId: message._id,
-        senderId: req.user.id,
-        senderName: req.user.name
-      }
-    });
+    try {
+      await Notification.create({
+        userId: receiverId,
+        type: 'new_message',
+        title: 'New Message',
+        message: `${req.user.name} sent you a message`,
+        metadata: {
+          messageId: message._id,
+          senderId: req.user.id,
+          senderName: req.user.name
+        }
+      });
+    } catch (notifError) {
+      console.error('[MESSAGE SEND] Failed to create notification:', notifError);
+      // Continue even if notification fails
+    }
 
     // Emit real-time notification via Socket.io
     const io = req.app.get('io');

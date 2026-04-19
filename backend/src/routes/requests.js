@@ -11,6 +11,7 @@ const auth = require('../middleware/auth');
 // @access  Private
 router.post('/', auth, async (req, res) => {
   try {
+    console.log('[REQUEST CREATE] User ID:', req.user.id, 'Body:', req.body);
     const { type, entityId, metadata = {} } = req.body;
 
     // Validation
@@ -41,6 +42,7 @@ router.post('/', auth, async (req, res) => {
         });
       }
       receiverId = entity.userId;
+      console.log('[REQUEST CREATE] Car found:', entity._id, 'Owner ID:', receiverId);
     } else if (type === 'driver') {
       entity = await Driver.findById(entityId);
       if (!entity) {
@@ -50,11 +52,20 @@ router.post('/', auth, async (req, res) => {
         });
       }
       receiverId = entity.userId;
+      console.log('[REQUEST CREATE] Driver found:', entity._id, 'Owner ID:', receiverId);
     } else {
       // Ride requests handled by existing booking system
       return res.status(400).json({
         status: 'error',
         message: 'Use /api/bookings for ride requests'
+      });
+    }
+
+    // Check if receiverId exists
+    if (!receiverId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Entity does not have a valid owner'
       });
     }
 
@@ -92,6 +103,7 @@ router.post('/', auth, async (req, res) => {
     });
 
     await newRequest.save();
+    console.log('[REQUEST CREATE] Request saved:', newRequest._id);
 
     // Create notification for receiver
     await Notification.create({
